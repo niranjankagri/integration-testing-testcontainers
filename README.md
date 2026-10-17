@@ -80,7 +80,7 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
 Needs Java 21 or later and Docker Desktop.
 
 ```
-cd /d D:\Data\Work\integration-testing-testcontainers
+cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
 mvnw.cmd verify                       all 21 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
