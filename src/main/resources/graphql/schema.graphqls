@@ -1,0 +1,34 @@
+type Query {
+    "One order, or null if there is no order with this id."
+    order(id: ID!): Order
+    "All orders of a customer, newest first."
+    orders(customer: String!): [Order!]!
+}
+
+type Mutation {
+    "Places an order (status PLACED) and publishes an OrderPlaced event."
+    placeOrder(input: PlaceOrderInput!): Order!
+}
+
+input PlaceOrderInput {
+    customer: String!
+    sku: String!
+    "1 to 10"
+    quantity: Int!
+}
+
+type Order {
+    id: ID!
+    customer: String!
+    sku: String!
+    quantity: Int!
+    status: OrderStatus!
+    "ISO-8601 timestamp"
+    createdAt: String!
+}
+
+enum OrderStatus {
+    PLACED
+    PAID
+    CANCELLED
+}
