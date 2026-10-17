@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test logging: Spring Boot's defaults, with the Kafka clients' very long configuration dumps turned off. -->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="org.testcontainers" level="INFO"/>
+</configuration>
