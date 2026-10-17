@@ -1,0 +1,8 @@
+# Maven build output
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE settings
+.idea/
+*.iml
+.vscode/
