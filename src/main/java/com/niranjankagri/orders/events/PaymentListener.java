@@ -80,6 +80,7 @@ public class PaymentListener {
      * have committed when the event arrived.
      */
     public static class UnknownOrderException extends RuntimeException {
+        /** The message names the order id; the dead-letter record's exception header carries it. */
         public UnknownOrderException(Long orderId) {
             super("No order " + orderId);
         }
