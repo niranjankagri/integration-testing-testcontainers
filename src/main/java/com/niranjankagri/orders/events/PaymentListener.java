@@ -24,12 +24,18 @@ public class PaymentListener {
     private final JdbcClient jdbc;
     private final JsonMapper json;
 
+    /** Spring injects the repository, the JDBC client for the processed-event table and the JSON mapper. */
     public PaymentListener(OrderRepository orders, JdbcClient jdbc, JsonMapper json) {
         this.orders = orders;
         this.jdbc = jdbc;
         this.json = json;
     }
 
+    /**
+     * Handles one payment event in one transaction: parse and validate it, skip it if its id was seen before, then
+     * mark the order PAID or CANCELLED. Only an order that is still PLACED changes; a later event for a finished
+     * order is logged and ignored.
+     */
     @KafkaListener(topics = Topics.PAYMENTS_COMPLETED)
     @Transactional
     public void on(String message) {
@@ -63,11 +69,16 @@ public class PaymentListener {
 
     /** An event that can never be processed, however often it is retried. */
     public static class InvalidEventException extends RuntimeException {
+        /** The message names the missing fields and quotes the event. */
         public InvalidEventException(String message) {
             super(message);
         }
     }
 
+    /**
+     * The event names an order this service does not know (yet). Retried, because the order's own transaction may not
+     * have committed when the event arrived.
+     */
     public static class UnknownOrderException extends RuntimeException {
         public UnknownOrderException(Long orderId) {
             super("No order " + orderId);

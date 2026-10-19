@@ -9,6 +9,10 @@ import org.springframework.context.annotation.Bean;
 @SpringBootApplication
 public class OrderServiceApplication {
 
+    /**
+     * Starts the service; it needs PostgreSQL and Kafka (see TestOrderServiceApplication for a local run with
+     * containers).
+     */
     public static void main(String[] args) {
         SpringApplication.run(OrderServiceApplication.class, args);
     }

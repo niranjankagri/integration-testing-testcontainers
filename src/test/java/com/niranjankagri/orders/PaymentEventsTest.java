@@ -51,6 +51,7 @@ class PaymentEventsTest {
     @Autowired
     JsonMapper json;
 
+    /** A successful payment marks the order PAID. */
     @Test
     void successfulPaymentMarksTheOrderPaid() {
         Order order = newOrder();
@@ -58,6 +59,7 @@ class PaymentEventsTest {
         awaitStatus(order, OrderStatus.PAID);
     }
 
+    /** A failed payment cancels the order. */
     @Test
     void failedPaymentCancelsTheOrder() {
         Order order = newOrder();
@@ -65,6 +67,7 @@ class PaymentEventsTest {
         awaitStatus(order, OrderStatus.CANCELLED);
     }
 
+    /** The same event id delivered twice is applied once, even when the copy points at another order. */
     @Test
     void aRedeliveredEventIsAppliedOnlyOnce() {
         // Kafka delivers at least once. The same event id must not be applied twice, even if the copy differs:
@@ -88,6 +91,9 @@ class PaymentEventsTest {
         assertThat(applied).isEqualTo(1);
     }
 
+    /**
+     * Broken JSON goes to the dead-letter topic at once, and the next event for the same order is still processed.
+     */
     @Test
     void brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents() {
         Order order = newOrder();
@@ -104,6 +110,10 @@ class PaymentEventsTest {
         awaitStatus(order, OrderStatus.PAID);
     }
 
+    /**
+     * An event without its required fields goes to the dead-letter topic, and the header says which field was
+     * missing.
+     */
     @Test
     void anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic() {
         try (KafkaProbe dlt = new KafkaProbe(kafkaContainer.getBootstrapServers(), Topics.PAYMENTS_COMPLETED_DLT)) {
@@ -115,6 +125,7 @@ class PaymentEventsTest {
         }
     }
 
+    /** An event for an unknown order is retried, then dead-lettered, and leaves no processed-event mark behind. */
     @Test
     void anEventForAnUnknownOrderIsRetriedThenDeadLettered() {
         long unknown = 987_654_321L;
@@ -134,20 +145,24 @@ class PaymentEventsTest {
         assertThat(marked).isZero();
     }
 
+    /** Places an order for a new customer through the service. */
     private Order newOrder() {
         return service.place(new PlaceOrderInput("customer-" + UUID.randomUUID(), "SKU-1", 1));
     }
 
+    /** Sends a payment event the way the payment service would. */
     private void sendPayment(PaymentCompleted event) {
         // Keyed by order id, as the payment service does: events of one order stay in order.
         kafka.send(Topics.PAYMENTS_COMPLETED, String.valueOf(event.orderId()), json.writeValueAsString(event));
     }
 
+    /** Polls the database until the order has the expected status, failing after TIMEOUT. */
     private void awaitStatus(Order order, OrderStatus expected) {
         await().atMost(TIMEOUT)
                 .untilAsserted(() -> assertThat(orders.findById(order.id()).orElseThrow().status()).isEqualTo(expected));
     }
 
+    /** A record header as text, or empty when the record does not have it. */
     private static String header(ConsumerRecord<String, String> record, String name) {
         Header header = record.headers().lastHeader(name);
         return header == null ? "" : new String(header.value(), StandardCharsets.UTF_8);

@@ -15,6 +15,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class GraphQlErrors extends DataFetcherExceptionResolverAdapter {
 
+    /**
+     * Bean-validation failures become one BAD_REQUEST error listing every broken field (sorted, so the message is
+     * stable); any other exception is left to Spring's default.
+     */
     @Override
     protected GraphQLError resolveToSingleError(Throwable ex, DataFetchingEnvironment env) {
         if (ex instanceof ConstraintViolationException violations) {

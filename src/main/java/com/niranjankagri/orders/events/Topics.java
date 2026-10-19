@@ -10,5 +10,6 @@ public final class Topics {
     /** Payment events that could not be processed, for a person to look at. */
     public static final String PAYMENTS_COMPLETED_DLT = "payments.completed.DLT";
 
+    /** Constants only: no instances. */
     private Topics() {}
 }

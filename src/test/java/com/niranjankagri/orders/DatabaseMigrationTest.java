@@ -19,6 +19,7 @@ class DatabaseMigrationTest {
     @Autowired
     JdbcClient jdbc;
 
+    /** Flyway applied exactly the expected migrations, all successfully. */
     @Test
     void allMigrationsAreAppliedSuccessfully() {
         List<String> applied = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank")
@@ -27,6 +28,7 @@ class DatabaseMigrationTest {
         assertThat(applied).containsExactly("1");
     }
 
+    /** The database itself refuses a quantity of 0 or 11 (check constraint). */
     @Test
     void databaseRejectsAQuantityOutsideOneToTen() {
         // The API validates this too; the constraint protects the data from every other writer (scripts, other code).
@@ -34,11 +36,13 @@ class DatabaseMigrationTest {
         assertThatThrownBy(() -> insertOrder(11, "PLACED")).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    /** The database refuses a status that is not one of the known ones. */
     @Test
     void databaseRejectsAnUnknownStatus() {
         assertThatThrownBy(() -> insertOrder(1, "SHIPPED")).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    /** A second insert of the same event id changes nothing: the base of the duplicate-event protection. */
     @Test
     void processedEventIdsAreUnique() {
         String id = "6f1c2c1e-0000-4000-8000-000000000001";
@@ -49,6 +53,7 @@ class DatabaseMigrationTest {
         assertThat(second).isZero();
     }
 
+    /** Inserts an order with plain SQL, past the application's own validation, to reach the database constraints. */
     private void insertOrder(int quantity, String status) {
         jdbc.sql("INSERT INTO orders (customer, sku, quantity, status, created_at) VALUES ('db-test', 'SKU-1', ?, ?, now())")
                 .params(quantity, status)

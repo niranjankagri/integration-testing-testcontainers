@@ -7,6 +7,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Places orders and announces them. */
 @Service
 public class OrderService {
 
@@ -14,6 +15,7 @@ public class OrderService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
+    /** The clock is injected so the creation time could be fixed in a test. */
     public OrderService(OrderRepository orders, ApplicationEventPublisher events, Clock clock) {
         this.orders = orders;
         this.events = events;

@@ -21,16 +21,19 @@ class KafkaConfigTest {
 
     // removeClassification returns the registered classification: false = "not retryable", null = not registered.
 
+    /** Broken JSON is classified as not retryable. */
     @Test
     void brokenJsonIsNotRetried() {
         assertThat(handler.removeClassification(JacksonException.class)).isFalse();
     }
 
+    /** An invalid event is classified as not retryable. */
     @Test
     void anInvalidEventIsNotRetried() {
         assertThat(handler.removeClassification(PaymentListener.InvalidEventException.class)).isFalse();
     }
 
+    /** An unknown order is not classified, so the default applies: retry. */
     @Test
     void anUnknownOrderIsRetried() {
         // Not registered: the default applies, which is "retry", because the order may simply not be committed yet.

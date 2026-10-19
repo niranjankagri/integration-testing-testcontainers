@@ -12,6 +12,9 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
 import tools.jackson.core.JacksonException;
 
+/**
+ * The topics this service uses and how a failing payment event is handled: retried, or sent to the dead-letter topic.
+ */
 @Configuration
 public class KafkaConfig {
 

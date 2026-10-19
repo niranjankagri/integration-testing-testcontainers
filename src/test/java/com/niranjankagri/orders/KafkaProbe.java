@@ -23,6 +23,7 @@ public final class KafkaProbe implements AutoCloseable {
     private final KafkaConsumer<String, String> consumer;
     private final List<ConsumerRecord<String, String>> seen = new ArrayList<>();
 
+    /** Assigns all partitions of the topic and moves to their end, so only records produced from now on are seen. */
     public KafkaProbe(String bootstrapServers, String topic) {
         consumer = new KafkaConsumer<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
@@ -50,6 +51,7 @@ public final class KafkaProbe implements AutoCloseable {
         return seen.stream().map(ConsumerRecord::value).toList();
     }
 
+    /** Closes the consumer; try-with-resources calls it. */
     @Override
     public void close() {
         consumer.close();

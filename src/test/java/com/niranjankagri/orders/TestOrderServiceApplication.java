@@ -8,6 +8,7 @@ import org.springframework.boot.SpringApplication;
  */
 public class TestOrderServiceApplication {
 
+    /** Starts the real application with the test's container configuration added. */
     public static void main(String[] args) {
         SpringApplication.from(OrderServiceApplication::main)
                 .with(TestcontainersConfiguration.class)

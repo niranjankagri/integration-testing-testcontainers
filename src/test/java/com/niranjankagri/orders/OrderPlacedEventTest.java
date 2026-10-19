@@ -25,6 +25,7 @@ class OrderPlacedEventTest {
     @Autowired
     JsonMapper json;
 
+    /** Placing an order sends OrderPlaced, keyed by the order id, with the order's data and an event id. */
     @Test
     void placingAnOrderPublishesOrderPlacedKeyedByTheOrderId() {
         String customer = "customer-" + UUID.randomUUID();
@@ -49,6 +50,7 @@ class OrderPlacedEventTest {
         }
     }
 
+    /** A refused order sends no event; proven by waiting for a later valid order's event instead of sleeping. */
     @Test
     void anInvalidOrderPublishesNothing() {
         String customer = "customer-" + UUID.randomUUID();

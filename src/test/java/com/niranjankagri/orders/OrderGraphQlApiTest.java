@@ -33,6 +33,7 @@ class OrderGraphQlApiTest {
     /** Each test uses its own customer, so tests never see each other's data, in any order or in parallel. */
     private final String customer = "customer-" + UUID.randomUUID();
 
+    /** A placed order can be read back with all its fields and status PLACED. */
     @Test
     void placeOrderStoresTheOrderAsPlaced() {
         String id = place(customer, "SKU-COFFEE", 2);
@@ -47,6 +48,7 @@ class OrderGraphQlApiTest {
                 .path("order.status").entity(String.class).isEqualTo("PLACED");
     }
 
+    /** orders(customer) returns only that customer's orders, newest first. */
     @Test
     void ordersListsOnlyTheCustomersOwnOrdersNewestFirst() {
         String first = place(customer, "SKU-A", 1);
@@ -61,6 +63,7 @@ class OrderGraphQlApiTest {
         assertThat(ids).containsExactly(second, first);
     }
 
+    /** An unknown id gives order: null, not an error. */
     @Test
     void unknownOrderIsNullWithoutAnError() {
         graphQl.document("{ order(id: \"999999999\") { id } }")
@@ -69,6 +72,7 @@ class OrderGraphQlApiTest {
                 .path("order").valueIsNull();
     }
 
+    /** Invalid input gives one BAD_REQUEST error naming every broken field, and nothing reaches the database. */
     @Test
     void invalidInputIsABadRequestErrorAndNothingIsStored() {
         graphQl.document(PLACE)
@@ -90,6 +94,7 @@ class OrderGraphQlApiTest {
         assertThat(stored).isZero();
     }
 
+    /** A missing required field is refused by the GraphQL schema itself, before any of our code runs. */
     @Test
     void aMissingRequiredFieldIsRejectedByTheSchemaBeforeAnyCodeRuns() {
         graphQl.document("mutation { placeOrder(input: {customer: \"x\", sku: \"y\"}) { id } }")
@@ -99,6 +104,7 @@ class OrderGraphQlApiTest {
                 .verify();
     }
 
+    /** Asking for a field the schema does not have is an error. */
     @Test
     void anUnknownFieldIsRejectedByTheSchema() {
         graphQl.document("{ order(id: \"1\") { id price } }")
@@ -108,6 +114,7 @@ class OrderGraphQlApiTest {
                 .verify();
     }
 
+    /** Places an order through the API, checks it came back PLACED and returns its id. */
     private String place(String forCustomer, String sku, int quantity) {
         return graphQl.document(PLACE)
                 .variable("customer", forCustomer)
