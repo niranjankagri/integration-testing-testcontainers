@@ -29,6 +29,16 @@ jobs:
           cache: maven
       - name: Build and test
         run: ./mvnw -B verify
+      # JUnit XML only, as its own artifact: the CI results collection of
+      # automation-coverage-quality-intelligence imports it (config/producers.toml there)
+      - name: Keep the JUnit results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-integration
+          path: target/surefire-reports/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 30
       - name: Test summary
         if: ${{ !cancelled() }}
         run: |
