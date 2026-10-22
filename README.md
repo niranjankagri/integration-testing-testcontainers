@@ -105,7 +105,10 @@ src/test/java/com/niranjankagri/orders/
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `mvnw verify` on GitHub's Ubuntu runner, which has Docker,
-so the containers start exactly as locally. A table of test classes, counts and times goes into the job summary.
+so the containers start exactly as locally. A table of test classes, counts and times goes into the job summary. The JUnit XML is kept as the
+**junit-integration** artifact, which [Automation Coverage & Quality Intelligence](https://github.com/niranjankagri/automation-coverage-quality-intelligence) collects.
+
+`main` is protected by a ruleset: every change goes through a pull request, and this CI job must pass before it is merged.
 
 ## Limits
 
@@ -118,4 +121,4 @@ See [docs/framework-design.md](docs/framework-design.md) and [docs/interview-que
 
 ## License
 
-MIT
+[MIT](LICENSE)
