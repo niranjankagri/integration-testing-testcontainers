@@ -108,6 +108,8 @@ src/test/java/com/niranjankagri/orders/
 so the containers start exactly as locally. A table of test classes, counts and times goes into the job summary. The JUnit XML is kept as the
 **junit-integration** artifact, which [Automation Coverage & Quality Intelligence](https://github.com/niranjankagri/automation-coverage-quality-intelligence) collects.
 
+CI also runs every Friday at 23:15 UTC without a code change, so a broken dependency or a change outside the repository shows up within a week. Dependabot proposes dependency and GitHub Actions updates once a month (minor and patch updates grouped, major versions as separate pull requests).
+
 `main` is protected by a ruleset: every change goes through a pull request, and this CI job must pass before it is merged.
 
 ## Limits
