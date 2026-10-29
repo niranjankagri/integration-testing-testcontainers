@@ -11,6 +11,7 @@ public class OutboxMetrics {
     private final OutboxEventStore outbox;
     private final Counter published;
     private final Counter publishFailures;
+    private final Counter cleaned;
 
     public OutboxMetrics(OutboxEventStore outbox, MeterRegistry registry) {
         this.outbox = outbox;
@@ -19,6 +20,9 @@ public class OutboxMetrics {
                 .register(registry);
         this.publishFailures = Counter.builder("orders.outbox.publish.failures")
                 .description("Outbox relay attempts that failed before marking an event published")
+                .register(registry);
+        this.cleaned = Counter.builder("orders.outbox.cleaned")
+                .description("Published outbox rows removed by retention cleanup")
                 .register(registry);
         registry.gauge("orders.outbox.pending", outbox, OutboxEventStore::countPending);
         registry.gauge("orders.outbox.oldest.pending.seconds", outbox, OutboxEventStore::oldestPendingAgeSeconds);
@@ -30,5 +34,9 @@ public class OutboxMetrics {
 
     public void publishFailed() {
         publishFailures.increment();
+    }
+
+    public void cleaned(int count) {
+        cleaned.increment(count);
     }
 }
