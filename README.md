@@ -30,23 +30,28 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
 
-## Local Prometheus and Grafana
+## Local Prometheus, Grafana, and Tempo
 
-The checked-in observability stack scrapes the running service every 15 seconds and provisions a Grafana dashboard
-for payment outcomes, delivery and recovery failures, dead-letter activity, and HTTP request rate. Prometheus and
-Grafana ports bind to localhost only. The container images are pinned in `compose.observability.yml`.
+The checked-in observability stack scrapes the running service every 15 seconds, stores traces in Tempo, and
+provisions a Grafana dashboard for payment outcomes, delivery and recovery failures, dead-letter activity, and HTTP
+request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
+consumer operations. Prometheus, Grafana, and Tempo ports bind to localhost only. The container images are pinned in
+`compose.observability.yml`.
 
-Start the service in one terminal, then start the stack from the repository root:
+Start the stack from the repository root, then start the service. Set the sampling probability to `1.0` for a local
+demo so every request is searchable; the service default is `0.1`:
 
 ```
-mvnw.cmd spring-boot:test-run
 docker compose -f compose.observability.yml up -d
+set TRACE_SAMPLING_PROBABILITY=1.0
+mvnw.cmd spring-boot:test-run
 ```
 
 Open [Grafana](http://localhost:3000) and sign in with the local default credentials `admin` / `admin`; Grafana
 prompts you to set a new password. The **Order Service / Order Service Overview** dashboard is provisioned
-automatically. Prometheus is available at [localhost:9090](http://localhost:9090); check **Status / Targets** and
-confirm `order-service` is `UP` if the dashboard has no data. Stop the stack with:
+automatically. To inspect traces, open **Explore**, select **Tempo**, and search for the `orderservice` service.
+Prometheus is available at [localhost:9090](http://localhost:9090); check **Status / Targets** and confirm
+`order-service` is `UP` if the dashboard has no data. Stop the stack with:
 
 ```
 docker compose -f compose.observability.yml down
@@ -54,7 +59,8 @@ docker compose -f compose.observability.yml down
 
 The Prometheus and Grafana data volumes survive `down`; remove them with `docker compose -f compose.observability.yml
 down -v` when you want to reset local data. This stack is for local development and does
-not add the observability ports to the application itself.
+not add the observability ports to the application itself. Override `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` if Tempo
+is hosted somewhere other than `http://localhost:4318/v1/traces`.
 
 ## Why real containers instead of mocks or an in-memory database
 
@@ -142,7 +148,7 @@ src/main/java/com/niranjankagri/orders/
 src/main/resources/
   graphql/schema.graphqls    db/migration/V1__create_orders.sql    application.properties
 observability/
-  prometheus/prometheus.yml   grafana/provisioning/   grafana/dashboards/
+  prometheus/prometheus.yml   tempo/tempo.yml   grafana/provisioning/   grafana/dashboards/
 compose.observability.yml
 src/test/java/com/niranjankagri/orders/
   TestcontainersConfiguration   pinned PostgreSQL and Kafka containers (@ServiceConnection)
