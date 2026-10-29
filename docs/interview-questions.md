@@ -242,19 +242,21 @@ end when the test starts, so it sees only the test's records and takes nothing f
 
 **In the project:** [KafkaProbe](../src/test/java/com/niranjankagri/orders/KafkaProbe.java).
 
-### Q32. Why publish after the database commit?
+### Q32. How do you avoid losing an event between a database commit and a Kafka publish?
 
-Publishing inside the transaction could announce an order that then rolls back. After the commit, nothing false is
-announced, but a crash between commit and send loses the event.
+Publishing inside a transaction could announce an order that then rolls back. Publishing only after commit avoids
+that false event, but a crash between commit and send loses it. A transactional outbox writes the event in the same
+database transaction and relays it after commit.
 
-**In the project:** `@TransactionalEventListener` in `OrderEventPublisher`.
+**In the project:** `OutboxEventStore` writes `OrderPlaced` with the order; `OrderOutboxRelay` sends and marks it.
 
 ### Q33. What is the transactional outbox?
 
-The event is written to an outbox table in the same transaction as the change; a relay publishes it afterwards. No
-lost and no false events, at the cost of a relay and possible duplicates (handled by idempotent consumers).
+The event is written to an outbox table in the same transaction as the change; a relay publishes it afterwards. This
+prevents losing an event on process failure between commit and publish, at the cost of a relay and possible duplicate
+publishes (handled by idempotent consumers).
 
-**In the project:** named as the production answer in the design doc.
+**In the project:** `OrderPlacedEventTest` verifies publication and transaction rollback behavior.
 
 ### Q34. What if an event arrives before the data it refers to?
 
