@@ -1,13 +1,22 @@
 package com.niranjankagri.orders;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 import com.niranjankagri.orders.events.Topics;
+import com.niranjankagri.orders.order.OrderService;
+import com.niranjankagri.orders.order.PlaceOrderInput;
+import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.graphql.test.tester.HttpGraphQlTester;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,6 +33,15 @@ class OrderPlacedEventTest {
 
     @Autowired
     JsonMapper json;
+
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    OrderService orders;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     /** Placing an order sends OrderPlaced, keyed by the order id, with the order's data and an event id. */
     @Test
@@ -46,8 +64,44 @@ class OrderPlacedEventTest {
             assertThat(event.get("sku").asText()).isEqualTo("SKU-TEA");
             assertThat(event.get("quantity").asInt()).isEqualTo(3);
             // Consumers deduplicate by eventId, so it must be present and a UUID.
-            assertThat(UUID.fromString(event.get("eventId").asText())).isNotNull();
+            UUID eventId = UUID.fromString(event.get("eventId").asText());
+            assertThat(eventId).isNotNull();
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+                Integer published = jdbc.sql("""
+                                SELECT count(*) FROM outbox_events
+                                WHERE event_id = ? AND published_at IS NOT NULL
+                                """)
+                        .param(eventId)
+                        .query(Integer.class)
+                        .single();
+                assertThat(published).isEqualTo(1);
+            });
         }
+    }
+
+    /** The order and its outgoing event are both removed when their shared transaction rolls back. */
+    @Test
+    void rollingBackAnOrderAlsoRollsBackItsOutboxEvent() {
+        AtomicReference<Long> orderId = new AtomicReference<>();
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+                    var order = orders.place(new PlaceOrderInput("rollback-" + UUID.randomUUID(), "SKU-TEA", 1));
+                    orderId.set(order.id());
+                    throw new IllegalStateException("force transaction rollback");
+                }))
+                .hasMessage("force transaction rollback");
+
+        Integer savedOrder = jdbc.sql("SELECT count(*) FROM orders WHERE id = ?")
+                .param(orderId.get())
+                .query(Integer.class)
+                .single();
+        Integer savedEvent = jdbc.sql("SELECT count(*) FROM outbox_events WHERE aggregate_id = ?")
+                .param(orderId.get())
+                .query(Integer.class)
+                .single();
+        assertThat(savedOrder).isZero();
+        assertThat(savedEvent).isZero();
     }
 
     /** A refused order sends no event; proven by waiting for a later valid order's event instead of sleeping. */
