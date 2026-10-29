@@ -3,6 +3,7 @@ package com.niranjankagri.orders.events;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -16,8 +17,8 @@ import tools.jackson.core.JacksonException;
 class KafkaConfigTest {
 
     @SuppressWarnings("unchecked")
-    private final DefaultErrorHandler handler =
-            (DefaultErrorHandler) new KafkaConfig().errorHandler(mock(KafkaOperations.class));
+    private final DefaultErrorHandler handler = (DefaultErrorHandler) new KafkaConfig()
+            .errorHandler(mock(KafkaOperations.class), mock(MeterRegistry.class));
 
     // removeClassification returns the registered classification: false = "not retryable", null = not registered.
 
