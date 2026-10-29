@@ -129,9 +129,8 @@ class OutboxCrashRecoveryTest {
                         "--server.port=0",
                         "--orders.outbox.poll-interval-ms=100",
                         "--orders.outbox.claim-lease-seconds=" + LEASE_SECONDS,
-                        // No collector runs in tests: without these, both exporters retry on shutdown for seconds.
-                        "--management.tracing.export.enabled=false",
-                        "--management.otlp.metrics.export.enabled=false");
+                        // No trace collector runs in tests: the exporter would retry on shutdown for seconds.
+                        "--management.tracing.export.enabled=false");
     }
 
     /** The outbox row of one event, read with plain JDBC from this class's database. */

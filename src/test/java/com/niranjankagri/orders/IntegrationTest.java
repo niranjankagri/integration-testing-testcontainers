@@ -14,7 +14,10 @@ import org.springframework.context.annotation.Import;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// No trace collector runs during tests; without this, sampled spans fail to export to localhost:4318 and log errors.
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "management.tracing.export.enabled=false")
 @AutoConfigureHttpGraphQlTester
 @Import(TestcontainersConfiguration.class)
 public @interface IntegrationTest {}
