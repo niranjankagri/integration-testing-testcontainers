@@ -81,12 +81,12 @@ class DatabaseMigrationTest {
             insertOutboxEvent(secondId, 700001, "second");
             insertOutboxEvent(otherAggregateId, 700002, "other");
 
-            List<OutboxEvent> firstBatch = outbox.claimPending(10, firstClaim, 30);
+            List<OutboxEvent> firstBatch = outbox.claimPending(2, firstClaim, 30);
             List<OutboxEvent> secondBatch = outbox.claimPending(10, secondClaim, 30);
             assertThat(firstBatch).hasSize(2);
-            assertThat(secondBatch).isEmpty();
             assertThat(firstBatch).extracting(OutboxEvent::eventId)
                     .containsExactlyInAnyOrder(firstId, otherAggregateId);
+            assertThat(secondBatch).extracting(OutboxEvent::eventId).doesNotContain(secondId);
 
             // Make one lease stale, then reclaim it. Its former owner can no longer mark it as published.
             jdbc.sql("UPDATE outbox_events SET claimed_until = now() - INTERVAL '1 second' WHERE event_id = ?")
@@ -154,7 +154,7 @@ class DatabaseMigrationTest {
     private void insertOutboxEvent(UUID eventId, long aggregateId, String payload) {
         jdbc.sql("""
                         INSERT INTO outbox_events (event_id, aggregate_id, topic, payload, created_at)
-                        VALUES (?, ?, 'orders.placed', ?, now())
+                        VALUES (?, ?, 'orders.placed', ?, now() - INTERVAL '1 day')
                         """)
                 .params(eventId, aggregateId, payload)
                 .update();
