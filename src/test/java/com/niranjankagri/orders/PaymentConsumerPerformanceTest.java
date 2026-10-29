@@ -56,9 +56,9 @@ class PaymentConsumerPerformanceTest {
     /** The rate of the steady stream in the rebalance test: 6,000 events take about 20 seconds. */
     private static final int EVENTS_PER_SECOND = 300;
     /**
-     * Far below what one instance reached (186 events/s on a Windows laptop with Docker Desktop, where every database
-     * round trip crosses the VM): only a large drop fails the build. One listener thread and one transaction per event
-     * set the pace.
+     * Far below what one instance reached (about 190 events/s on a Windows laptop with Docker Desktop, where every
+     * database round trip crosses the VM; 826 on a GitHub runner): only a large drop fails the build. One listener
+     * thread and one transaction per event set the pace.
      */
     private static final double MIN_EVENTS_PER_SECOND = 50;
     /** The longest time without any progress while an instance joins or leaves (a rebalance takes seconds, not a minute). */

@@ -193,15 +193,14 @@ existing orders twice, on its own PostgreSQL and Kafka:
   30 seconds. A steady stream, because against a ready backlog a fast CI runner finished before the second instance
   had started.
 
-The thresholds are floors that catch a large regression, not benchmarks. First run on a Windows laptop with Docker
-Desktop:
+The thresholds are floors that catch a large regression, not benchmarks. First results:
 
-| Phase | Events | Seconds | Events/s | Longest pause |
-|---|---:|---:|---:|---:|
-| one instance | 6000 | 31.0 | 193 | 0.2 s |
-| instance joins and leaves (stream of 300/s) | 6000 | 30.3 | 198 | 0.3 s |
+| Phase | Windows laptop, Docker Desktop | GitHub runner (ubuntu-latest) |
+|---|---:|---:|
+| one instance, 6,000-event backlog | 193 events/s, longest pause 0.2 s | 826 events/s, longest pause 0.1 s |
+| instance joins and leaves, stream of 300/s | all 6,000 applied once, longest pause 0.3 s | all 6,000 applied once, longest pause 0.3 s |
 
-In that run the second instance owned partitions after 1,770 events were sent and left after 4,020.
+Docker Desktop runs the containers in a VM, so every database round trip costs more on the laptop.
 
 One listener thread handles all three partitions and each event is its own database transaction, which sets the pace;
 `spring.kafka.listener.concurrency=3` (one thread per partition, so per-order ordering is kept) is the obvious next step.
