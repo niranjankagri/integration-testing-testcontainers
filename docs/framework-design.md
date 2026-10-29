@@ -92,7 +92,9 @@ table in the job summary; the reports are uploaded when a test fails.
 ## 10. What a real setup adds
 
 - Contract tests or a schema registry between event producers and consumers.
-- Retention for published outbox rows and a claim/lease or CDC relay before scaling the service to multiple instances.
+- Retention for published outbox rows; the PostgreSQL claim lease supports multiple relay instances in this sample.
+- A 30-second claim lease recovers work from a crashed relay; stable event ids still let consumers handle a duplicate
+  if Kafka acknowledges a publish but the database mark does not commit.
 - A process-crash test between commit and publish acknowledgement, beyond the atomic rollback and successful relay
   integration coverage in this sample.
 - Consumer lag and dead-letter monitoring, and a documented way to replay dead-lettered events.
