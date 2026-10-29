@@ -18,14 +18,14 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 
 | Test class | What it proves | How |
 |---|---|---|
-| `DatabaseMigrationTest` (4) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data | `flyway_schema_history`, check constraints, unique event ids |
+| `DatabaseMigrationTest` (5) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data; outbox leases are exclusive and recoverable | `flyway_schema_history`, check constraints, unique event ids |
 | `OrderGraphQlApiTest` (6) | queries, the mutation, validation errors, schema rejections, data isolation | `HttpGraphQlTester` over real HTTP |
 | `OrderPlacedEventTest` (3) | the order and outbox row commit together; the relay publishes `OrderPlaced` keyed by order id | real PostgreSQL transaction and a probe consumer on Kafka |
 | `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
 
-**26 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+**27 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -140,7 +140,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 26 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 27 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
@@ -178,8 +178,9 @@ CI also runs every Friday at 23:15 UTC without a code change, so a broken depend
 ## Limits
 
 - `OrderPlaced` uses an at-least-once transactional outbox. A crash after Kafka accepts a message but before the
-  database marks it published can cause a duplicate; the stable event id lets consumers deduplicate it. This sample
-  relay is a single serial worker; multiple service replicas need an explicit claim/lease strategy or CDC relay.
+  database marks it published can cause a duplicate; the stable event id lets consumers deduplicate it. PostgreSQL
+  claim leases let multiple relay instances work concurrently, and only the oldest unpublished event per order can
+  be claimed so retries do not let later events overtake it. A crashed worker's claim becomes available after 30 seconds.
 - Published outbox rows are retained for inspection. A production service should add retention and cleanup policies.
 - One service. Contract tests between producer and consumer teams (for example with Pact or a schema registry) are
   shown in my [pact-contract-testing](https://github.com/niranjankagri/pact-contract-testing) repository.
