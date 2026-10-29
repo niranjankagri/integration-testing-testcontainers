@@ -36,7 +36,7 @@ class DatabaseMigrationTest {
         List<String> applied = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank")
                 .query(String.class)
                 .list();
-        assertThat(applied).containsExactly("1", "2", "3");
+        assertThat(applied).containsExactly("1", "2", "3", "4");
     }
 
     /** The database itself refuses a quantity of 0 or 11 (check constraint). */
@@ -109,6 +109,40 @@ class DatabaseMigrationTest {
         });
     }
 
+    /** Retention removes only old published rows and leaves old pending events available for delivery. */
+    @Test
+    void outboxRetentionDeletesOnlyPublishedRowsPastTheConfiguredAge() {
+        UUID expiredPublished = UUID.fromString("00000000-0000-4000-8000-000000000104");
+        UUID recentPublished = UUID.fromString("00000000-0000-4000-8000-000000000105");
+        UUID oldPending = UUID.fromString("00000000-0000-4000-8000-000000000106");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        transaction.executeWithoutResult(status -> {
+            insertOutboxEvent(expiredPublished, 700004, "expired-published");
+            insertOutboxEvent(recentPublished, 700005, "recent-published");
+            insertOutboxEvent(oldPending, 700006, "old-pending");
+            jdbc.sql("UPDATE outbox_events SET published_at = now() - INTERVAL '31 days' WHERE event_id = ?")
+                    .param(expiredPublished)
+                    .update();
+            jdbc.sql("UPDATE outbox_events SET published_at = now() - INTERVAL '10 days' WHERE event_id = ?")
+                    .param(recentPublished)
+                    .update();
+            jdbc.sql("UPDATE outbox_events SET created_at = now() - INTERVAL '60 days' WHERE event_id = ?")
+                    .param(oldPending)
+                    .update();
+
+            int deleted = outbox.deletePublishedBefore(30, 10);
+            assertThat(deleted).isEqualTo(1);
+            assertThat(outboxEventCount(expiredPublished)).isZero();
+            assertThat(outboxEventCount(recentPublished)).isEqualTo(1);
+            assertThat(outboxEventCount(oldPending)).isEqualTo(1);
+
+            jdbc.sql("DELETE FROM outbox_events WHERE event_id IN (?, ?, ?)")
+                    .params(expiredPublished, recentPublished, oldPending)
+                    .update();
+        });
+    }
+
     /** Inserts an order with plain SQL, past the application's own validation, to reach the database constraints. */
     private void insertOrder(int quantity, String status) {
         jdbc.sql("INSERT INTO orders (customer, sku, quantity, status, created_at) VALUES ('db-test', 'SKU-1', ?, ?, now())")
@@ -124,5 +158,13 @@ class DatabaseMigrationTest {
                         """)
                 .params(eventId, aggregateId, payload)
                 .update();
+    }
+
+    /** Counts a single outbox fixture without depending on any application-level repository behavior. */
+    private int outboxEventCount(UUID eventId) {
+        return jdbc.sql("SELECT count(*) FROM outbox_events WHERE event_id = ?")
+                .param(eventId)
+                .query(Integer.class)
+                .single();
     }
 }
