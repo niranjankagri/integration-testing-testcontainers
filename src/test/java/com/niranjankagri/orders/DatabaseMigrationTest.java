@@ -25,7 +25,7 @@ class DatabaseMigrationTest {
         List<String> applied = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank")
                 .query(String.class)
                 .list();
-        assertThat(applied).containsExactly("1");
+        assertThat(applied).containsExactly("1", "2");
     }
 
     /** The database itself refuses a quantity of 0 or 11 (check constraint). */

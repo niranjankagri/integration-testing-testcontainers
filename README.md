@@ -20,12 +20,12 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 |---|---|---|
 | `DatabaseMigrationTest` (4) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data | `flyway_schema_history`, check constraints, unique event ids |
 | `OrderGraphQlApiTest` (6) | queries, the mutation, validation errors, schema rejections, data isolation | `HttpGraphQlTester` over real HTTP |
-| `OrderPlacedEventTest` (2) | every placed order publishes `OrderPlaced`, keyed by order id; an invalid order publishes nothing | a probe consumer on the real topic |
+| `OrderPlacedEventTest` (3) | the order and outbox row commit together; the relay publishes `OrderPlaced` keyed by order id | real PostgreSQL transaction and a probe consumer on Kafka |
 | `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
 
-**25 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+**26 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -94,7 +94,7 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
 | Broken JSON | straight to `payments.completed.DLT`, no retries; later events for the same order still processed | `brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents` |
 | Required field missing | straight to the dead-letter topic | `anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic` |
 | Unknown order (maybe not committed yet) | retried, then dead-lettered; nothing marked as processed, so a replay can still work | `anEventForAnUnknownOrderIsRetriedThenDeadLettered` |
-| Order placed | `OrderPlaced` published only after the database commit, keyed by order id | `placingAnOrderPublishesOrderPlacedKeyedByTheOrderId` |
+| Order placed | order and `OrderPlaced` outbox row commit together; the relay publishes it keyed by order id | `placingAnOrderPublishesOrderPlacedKeyedByTheOrderId`, `rollingBackAnOrderAlsoRollsBackItsOutboxEvent` |
 
 ## What the tests found
 
@@ -139,7 +139,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 25 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 26 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
@@ -149,7 +149,7 @@ mvnw.cmd spring-boot:test-run         the service with the same containers; Grap
 ```
 src/main/java/com/niranjankagri/orders/
   order/      Order, OrderRepository, OrderService, OrderGraphQlController, PlaceOrderInput, GraphQlErrors
-  events/     Topics, OrderPlaced, PaymentCompleted, OrderEventPublisher, PaymentListener, KafkaConfig
+  events/     Topics, OrderPlaced, PaymentCompleted, OutboxEventStore, OrderOutboxRelay, PaymentListener, KafkaConfig
 src/main/resources/
   graphql/schema.graphqls    db/migration/V1__create_orders.sql    application.properties
 observability/
@@ -176,8 +176,10 @@ CI also runs every Friday at 23:15 UTC without a code change, so a broken depend
 
 ## Limits
 
-- `OrderPlaced` is sent after the commit; a crash between commit and send would lose it. Production would use a
-  transactional outbox (the event stored in the same transaction and relayed). The trade-off is documented in the code.
+- `OrderPlaced` uses an at-least-once transactional outbox. A crash after Kafka accepts a message but before the
+  database marks it published can cause a duplicate; the stable event id lets consumers deduplicate it. This sample
+  relay is a single serial worker; multiple service replicas need an explicit claim/lease strategy or CDC relay.
+- Published outbox rows are retained for inspection. A production service should add retention and cleanup policies.
 - One service. Contract tests between producer and consumer teams (for example with Pact or a schema registry) are
   shown in my [pact-contract-testing](https://github.com/niranjankagri/pact-contract-testing) repository.
 

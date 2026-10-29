@@ -15,15 +15,15 @@ Why the project is built the way it is. The README says what it does and how to 
 | Part | Role | Tools |
 |---|---|---|
 | `order/` | the order model, the GraphQL API, input validation and error mapping | Spring for GraphQL, Bean Validation, Spring Data JDBC |
-| `events/` | `OrderPlaced` out after commit, `PaymentCompleted` in with deduplication and a dead-letter topic | Spring Kafka, Jackson 3 |
-| `db/migration` | the schema, including check constraints | Flyway, PostgreSQL 18 |
+| `events/` | `OrderPlaced` out through a transactional outbox, `PaymentCompleted` in with deduplication and a dead-letter topic | Spring Kafka, Jackson 3 |
+| `db/migration` | the orders, processed-event and outbox schemas, including check constraints | Flyway, PostgreSQL 18 |
 | `TestcontainersConfiguration` | PostgreSQL and Kafka in Docker, wired with `@ServiceConnection` | Testcontainers 2 |
 | tests | API, events, migrations, retry rules | JUnit 5, `HttpGraphQlTester`, AssertJ, Awaitility |
 
 ## 3. The service is small on purpose
 
 It has exactly the features that make testing interesting: a schema with validation, a database with constraints,
-one event out (with a timing rule: after commit) and one event in (with idempotency, retries and a dead-letter topic).
+one event out through a transactional outbox and one event in (with idempotency, retries and a dead-letter topic).
 Everything else (authentication, more entities, a real payment service) would add code without adding test ideas.
 
 ## 4. Test environment
@@ -51,8 +51,9 @@ Everything else (authentication, more entities, a real payment service) would ad
 
 ## 6. Event handling decisions
 
-- **Publish after commit** (`@TransactionalEventListener`): never announce an order that rolled back. The trade-off
-  (a crash after commit loses the event) is named in the code; a transactional outbox would remove it.
+- **Transactional outbox:** `OrderPlaced` is inserted in the same PostgreSQL transaction as its order. The relay
+  publishes only committed rows and marks them after Kafka acknowledges. A crash after broker acknowledgement but
+  before that mark can produce a duplicate; the persisted event id is stable for consumer deduplication.
 - **Keys:** events are keyed by order id, so all events of one order land in one partition and keep their order.
 - **Idempotency:** the event id goes into `processed_events` in the same transaction as the order change. A duplicate
   is skipped; if processing fails, the mark rolls back with it, so a retry or a later replay still works.
@@ -91,6 +92,8 @@ table in the job summary; the reports are uploaded when a test fails.
 ## 10. What a real setup adds
 
 - Contract tests or a schema registry between event producers and consumers.
-- A transactional outbox and a test for it (kill the app between commit and send, check the event still goes out).
+- Retention for published outbox rows and a claim/lease or CDC relay before scaling the service to multiple instances.
+- A process-crash test between commit and publish acknowledgement, beyond the atomic rollback and successful relay
+  integration coverage in this sample.
 - Consumer lag and dead-letter monitoring, and a documented way to replay dead-lettered events.
 - Performance tests of the consumer (throughput, rebalancing), which these functional tests do not cover.

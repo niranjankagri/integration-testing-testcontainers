@@ -1,35 +1,34 @@
 package com.niranjankagri.orders.order;
 
 import com.niranjankagri.orders.events.OrderPlaced;
+import com.niranjankagri.orders.events.OutboxEventStore;
 import java.time.Clock;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Places orders and announces them. */
+/** Places orders and records their outgoing events in the same transaction. */
 @Service
 public class OrderService {
 
     private final OrderRepository orders;
-    private final ApplicationEventPublisher events;
+    private final OutboxEventStore outbox;
     private final Clock clock;
 
-    /** The clock is injected so the creation time could be fixed in a test. */
-    public OrderService(OrderRepository orders, ApplicationEventPublisher events, Clock clock) {
+    public OrderService(OrderRepository orders, OutboxEventStore outbox, Clock clock) {
         this.orders = orders;
-        this.events = events;
+        this.outbox = outbox;
         this.clock = clock;
     }
 
     /**
-     * Stores the order and announces it. The Kafka message is sent only after the transaction commits
-     * (OrderEventPublisher), so no event is ever published for an order that was rolled back.
+     * Stores the order and its event atomically. The relay only sees committed rows, and a rollback removes both.
      */
     @Transactional
     public Order place(PlaceOrderInput input) {
         Order saved = orders.save(Order.place(input.customer(), input.sku(), input.quantity(), clock.instant()));
-        events.publishEvent(new OrderPlaced(UUID.randomUUID(), saved.id(), saved.customer(), saved.sku(), saved.quantity()));
+        outbox.append(new OrderPlaced(
+                UUID.randomUUID(), saved.id(), saved.customer(), saved.sku(), saved.quantity()));
         return saved;
     }
 }
