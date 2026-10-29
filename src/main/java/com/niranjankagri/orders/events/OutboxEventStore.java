@@ -86,6 +86,27 @@ public class OutboxEventStore {
                 .single();
     }
 
+    /** Deletes a bounded batch of expired published rows and skips rows locked by another cleaner instance. */
+    public int deletePublishedBefore(int retentionDays, int limit) {
+        return jdbc.sql("""
+                        WITH expired AS (
+                            SELECT event_id
+                            FROM outbox_events
+                            WHERE published_at IS NOT NULL
+                              AND published_at < now() - (:retentionDays * INTERVAL '1 day')
+                            ORDER BY published_at, event_id
+                            LIMIT :limit
+                            FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM outbox_events event
+                        USING expired
+                        WHERE event.event_id = expired.event_id
+                        """)
+                .param("retentionDays", retentionDays)
+                .param("limit", limit)
+                .update();
+    }
+
     /** Marks a claimed event only after Kafka acknowledges the publish. */
     public boolean markPublished(UUID eventId, UUID claimToken) {
         return jdbc.sql("""

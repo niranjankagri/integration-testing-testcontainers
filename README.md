@@ -18,14 +18,14 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 
 | Test class | What it proves | How |
 |---|---|---|
-| `DatabaseMigrationTest` (5) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data; outbox leases are exclusive and recoverable | `flyway_schema_history`, check constraints, unique event ids |
+| `DatabaseMigrationTest` (6) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data; outbox claims recover and retention preserves pending rows | `flyway_schema_history`, check constraints, unique event ids |
 | `OrderGraphQlApiTest` (6) | queries, the mutation, validation errors, schema rejections, data isolation | `HttpGraphQlTester` over real HTTP |
 | `OrderPlacedEventTest` (3) | the order and outbox row commit together; the relay publishes `OrderPlaced` keyed by order id | real PostgreSQL transaction and a probe consumer on Kafka |
 | `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
 
-**27 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+**28 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -34,7 +34,7 @@ scrape endpoints available over HTTP.
 
 The checked-in observability stack scrapes the running service every 15 seconds, stores traces in Tempo, and
 provisions a Grafana dashboard for payment and outbox outcomes, delivery and recovery failures, dead-letter activity,
-and HTTP request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
+published outbox cleanup, and HTTP request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
 consumer operations. Prometheus, Grafana, and Tempo ports bind to localhost only. The container images are pinned in
 `compose.observability.yml`.
 
@@ -122,9 +122,9 @@ The service exposes `/actuator/health` for a basic availability check and `/actu
 Prometheus registry exports standard JVM and HTTP server measurements, plus the bounded
 `orders.payment.events` counter with outcomes `paid`, `cancelled`, `duplicate`, `ignored`, `delivery_failed`,
 `dead_lettered` and `recovery_failed`. Outbox metrics report pending event count, oldest pending event age, successful
-publishes and failed relay attempts. They never tag a metric with a customer, order id or event id, so traffic cannot
-create unbounded time series. Integration tests also prove a dead-lettered payment can be replayed after its order
-becomes available.
+publishes, failed relay attempts, and rows removed by retention. They never tag a metric with a customer, order id or
+event id, so traffic cannot create unbounded time series. Integration tests also prove a dead-lettered payment can be
+replayed after its order becomes available.
 
 Only `health` and `prometheus` are exposed over HTTP; endpoints such as `/actuator/env` remain unavailable. The
 integration tests check both scrape format and the endpoint allowlist. With the service running locally:
@@ -140,7 +140,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 27 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 28 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
@@ -181,7 +181,8 @@ CI also runs every Friday at 23:15 UTC without a code change, so a broken depend
   database marks it published can cause a duplicate; the stable event id lets consumers deduplicate it. PostgreSQL
   claim leases let multiple relay instances work concurrently, and only the oldest unpublished event per order can
   be claimed so retries do not let later events overtake it. A crashed worker's claim becomes available after 30 seconds.
-- Published outbox rows are retained for inspection. A production service should add retention and cleanup policies.
+- Published outbox rows are removed in batches after 30 days by default. Set `ORDERS_OUTBOX_RETENTION_DAYS` to match
+  the service's audit policy; archive events elsewhere if they must be retained longer. Pending rows are never removed.
 - One service. Contract tests between producer and consumer teams (for example with Pact or a schema registry) are
   shown in my [pact-contract-testing](https://github.com/niranjankagri/pact-contract-testing) repository.
 

@@ -336,6 +336,54 @@
       ],
       "title": "Oldest pending outbox event",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(orders_outbox_cleaned_total[24h])) or vector(0)",
+          "legendFormat": "cleaned",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Published outbox rows cleaned (24h)",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

@@ -40,7 +40,8 @@ class ObservabilityEndpointTest {
                 .contains("# TYPE orders_outbox_pending gauge")
                 .contains("# TYPE orders_outbox_oldest_pending_seconds gauge")
                 .contains("# TYPE orders_outbox_published_total counter")
-                .contains("# TYPE orders_outbox_publish_failures_total counter");
+                .contains("# TYPE orders_outbox_publish_failures_total counter")
+                .contains("# TYPE orders_outbox_cleaned_total counter");
     }
 
     /** Operational endpoints with application details are not exposed over HTTP. */
