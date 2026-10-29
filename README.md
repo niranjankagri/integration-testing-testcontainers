@@ -33,8 +33,8 @@ scrape endpoints available over HTTP.
 ## Local Prometheus, Grafana, and Tempo
 
 The checked-in observability stack scrapes the running service every 15 seconds, stores traces in Tempo, and
-provisions a Grafana dashboard for payment outcomes, delivery and recovery failures, dead-letter activity, and HTTP
-request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
+provisions a Grafana dashboard for payment and outbox outcomes, delivery and recovery failures, dead-letter activity,
+and HTTP request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
 consumer operations. Prometheus, Grafana, and Tempo ports bind to localhost only. The container images are pinned in
 `compose.observability.yml`.
 
@@ -54,9 +54,9 @@ Prometheus is available at [localhost:9090](http://localhost:9090); check **Stat
 `order-service` is `UP` if the dashboard has no data.
 
 Prometheus also evaluates the rules in `observability/prometheus/rules/order-service.yml`. Check
-[Alerts](http://localhost:9090/alerts) for service availability, dead-lettered payments, and recovery publish
-failures; [Rules](http://localhost:9090/rules) shows their evaluation state. Alert notifications are not configured
-in this local stack. Stop the stack with:
+[Alerts](http://localhost:9090/alerts) for service availability, dead-lettered payments, recovery publish failures,
+and an outbox event waiting longer than one minute; [Rules](http://localhost:9090/rules) shows their evaluation
+state. Alert notifications are not configured in this local stack. Stop the stack with:
 
 ```
 docker compose -f compose.observability.yml down
@@ -121,7 +121,8 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
 The service exposes `/actuator/health` for a basic availability check and `/actuator/prometheus` for scraping. The
 Prometheus registry exports standard JVM and HTTP server measurements, plus the bounded
 `orders.payment.events` counter with outcomes `paid`, `cancelled`, `duplicate`, `ignored`, `delivery_failed`,
-`dead_lettered` and `recovery_failed`. It never tags a metric with a customer, order id or event id, so traffic cannot
+`dead_lettered` and `recovery_failed`. Outbox metrics report pending event count, oldest pending event age, successful
+publishes and failed relay attempts. They never tag a metric with a customer, order id or event id, so traffic cannot
 create unbounded time series. Integration tests also prove a dead-lettered payment can be replayed after its order
 becomes available.
 
