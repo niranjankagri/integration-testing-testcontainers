@@ -68,6 +68,9 @@ The Prometheus and Grafana data volumes survive `down`; remove them with `docker
 down -v` when you want to reset local data. This stack is for local development and does
 not add the observability ports to the application itself. Override `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` if Tempo
 is hosted somewhere other than `http://localhost:4318/v1/traces`.
+Only traces go out over OTLP: metrics reach Prometheus by scraping, so the OTLP metrics push that the OpenTelemetry
+starter enables by default is switched off (`management.otlp.metrics.export.enabled=false`). The tests switch off
+trace export too, because no collector runs in CI.
 
 ## Why real containers instead of mocks or an in-memory database
 
