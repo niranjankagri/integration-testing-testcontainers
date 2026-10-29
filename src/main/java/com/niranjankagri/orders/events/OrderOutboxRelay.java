@@ -17,10 +17,12 @@ public class OrderOutboxRelay {
 
     private final OutboxEventStore outbox;
     private final KafkaTemplate<String, String> kafka;
+    private final OutboxMetrics metrics;
 
-    public OrderOutboxRelay(OutboxEventStore outbox, KafkaTemplate<String, String> kafka) {
+    public OrderOutboxRelay(OutboxEventStore outbox, KafkaTemplate<String, String> kafka, OutboxMetrics metrics) {
         this.outbox = outbox;
         this.kafka = kafka;
+        this.metrics = metrics;
     }
 
     /** Stops at the first failure so later order events do not overtake the event being retried. */
@@ -31,6 +33,7 @@ public class OrderOutboxRelay {
                 kafka.send(event.topic(), Long.toString(event.aggregateId()), event.payload())
                         .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 outbox.markPublished(event.eventId());
+                metrics.published();
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 return;
@@ -38,6 +41,7 @@ public class OrderOutboxRelay {
                 // Leave the row pending. A later poll retries with the same event id, so consumers can deduplicate
                 // the rare case where Kafka accepted the message but the database update did not commit.
                 log.warn("Outbox event {} was not marked published; it will be retried", event.eventId(), failure);
+                metrics.publishFailed();
                 return;
             }
         }

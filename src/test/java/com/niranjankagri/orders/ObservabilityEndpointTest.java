@@ -36,6 +36,11 @@ class ObservabilityEndpointTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("text/plain");
         assertThat(response.body()).contains("# TYPE jvm_memory_used_bytes gauge");
+        assertThat(response.body())
+                .contains("# TYPE orders_outbox_pending gauge")
+                .contains("# TYPE orders_outbox_oldest_pending_seconds gauge")
+                .contains("# TYPE orders_outbox_published_total counter")
+                .contains("# TYPE orders_outbox_publish_failures_total counter");
     }
 
     /** Operational endpoints with application details are not exposed over HTTP. */

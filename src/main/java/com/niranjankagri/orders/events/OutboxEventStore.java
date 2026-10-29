@@ -49,6 +49,24 @@ public class OutboxEventStore {
                 .list();
     }
 
+    /** Counts committed events still waiting for the relay. */
+    public double countPending() {
+        return jdbc.sql("SELECT count(*) FROM outbox_events WHERE published_at IS NULL")
+                .query(Long.class)
+                .single();
+    }
+
+    /** Returns the age of the oldest pending event, or zero when the outbox is clear. */
+    public double oldestPendingAgeSeconds() {
+        return jdbc.sql("""
+                        SELECT COALESCE(EXTRACT(EPOCH FROM now() - MIN(created_at)), 0)
+                        FROM outbox_events
+                        WHERE published_at IS NULL
+                        """)
+                .query(Double.class)
+                .single();
+    }
+
     /** Marks an event only after Kafka acknowledges the publish. */
     public void markPublished(UUID eventId) {
         jdbc.sql("UPDATE outbox_events SET published_at = now() WHERE event_id = :eventId AND published_at IS NULL")
