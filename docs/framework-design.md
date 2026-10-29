@@ -99,5 +99,6 @@ table in the job summary; the reports are uploaded when a test fails.
   the audit policy. The claim lease supports multiple relay instances in this sample.
 - A 30-second claim lease recovers work from a crashed relay; stable event ids still let consumers handle a duplicate
   if Kafka acknowledges a publish but the database mark does not commit.
-- Consumer lag and dead-letter monitoring, and a documented way to replay dead-lettered events.
+- Consumer-group lag and dead-letter alerts are in this sample (`ConsumerLagMetrics`, the Prometheus rules, and
+  [dead-letter-replay.md](dead-letter-replay.md)); a real setup routes the alerts to on-call through Alertmanager.
 - Performance tests of the consumer (throughput, rebalancing), which these functional tests do not cover.

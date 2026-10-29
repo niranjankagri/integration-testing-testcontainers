@@ -1,0 +1,76 @@
+# Unit tests of the alert rules: Prometheus evaluates the rules against made-up series and compares the alerts.
+# Run with: docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/etc/prometheus:ro" \
+#             prom/prometheus:v3.15.1 test rules /etc/prometheus/tests/order-service.test.yml
+rule_files:
+  - ../rules/order-service.yml
+
+evaluation_interval: 15s
+
+tests:
+  # Lag above 100 from minute 2 on; the alert waits five minutes, so it is pending at 3m and firing from 7m.
+  - interval: 1m
+    input_series:
+      - series: 'orders_payment_consumer_lag{job="order-service", instance="host.docker.internal:8080"}'
+        values: '0 50 150x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PaymentConsumerLagging
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: PaymentConsumerLagging
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: order-service
+              instance: host.docker.internal:8080
+            exp_annotations:
+              summary: The payment consumer is falling behind
+              description: More than 100 payment events have waited for five minutes. Check the listener logs, the database and consumer rebalances.
+
+  # A short spike that clears within the five minutes never fires.
+  - interval: 1m
+    input_series:
+      - series: 'orders_payment_consumer_lag{job="order-service", instance="host.docker.internal:8080"}'
+        values: '0 500 500 0x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PaymentConsumerLagging
+        exp_alerts: []
+
+  # An outbox event older than 60 seconds for two minutes in a row.
+  - interval: 1m
+    input_series:
+      - series: 'orders_outbox_oldest_pending_seconds{job="order-service", instance="host.docker.internal:8080"}'
+        values: '0 30 90x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OrderOutboxStalled
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: OrderOutboxStalled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: order-service
+              instance: host.docker.internal:8080
+            exp_annotations:
+              summary: An order event has been waiting in the outbox for over one minute
+              description: Check Kafka availability and the order service outbox relay logs.
+
+  # A dead-lettered payment raises the alert after one minute.
+  - interval: 1m
+    input_series:
+      - series: 'orders_payment_events_total{job="order-service", instance="host.docker.internal:8080", outcome="dead_lettered"}'
+        values: '0 0 1x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PaymentDeadLettered
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: order-service
+              instance: host.docker.internal:8080
+              outcome: dead_lettered
+            exp_annotations:
+              summary: A payment event was sent to the dead-letter topic
+              description: At least one payment event was dead-lettered in the last five minutes.

@@ -37,3 +37,12 @@ groups:
         annotations:
           summary: An order event has been waiting in the outbox for over one minute
           description: Check Kafka availability and the order service outbox relay logs.
+
+      - alert: PaymentConsumerLagging
+        expr: orders_payment_consumer_lag > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The payment consumer is falling behind
+          description: More than 100 payment events have waited for five minutes. Check the listener logs, the database and consumer rebalances.
