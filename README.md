@@ -187,17 +187,21 @@ src/test/java/com/niranjankagri/orders/
 existing orders twice, on its own PostgreSQL and Kafka:
 
 - **One instance** works through the backlog; the build fails below 50 events per second.
-- **An instance joins and leaves** while the second backlog is processed (two consumer-group rebalances in the middle
-  of the stream). Every event must be applied exactly once (all orders `PAID`, one `processed_events` row each), and
-  progress may stop for at most 30 seconds.
+- **An instance joins and leaves** while 6,000 more payments arrive as a steady stream (300 per second): two
+  consumer-group rebalances in the middle of the stream, checked to happen before the last event is sent. Every event
+  must be applied exactly once (all orders `PAID`, one `processed_events` row each), and progress may stop for at most
+  30 seconds. A steady stream, because against a ready backlog a fast CI runner finished before the second instance
+  had started.
 
 The thresholds are floors that catch a large regression, not benchmarks. First run on a Windows laptop with Docker
 Desktop:
 
 | Phase | Events | Seconds | Events/s | Longest pause |
 |---|---:|---:|---:|---:|
-| one instance | 6000 | 32.2 | 186 | 0.2 s |
-| instance joins and leaves | 6000 | 29.3 | 205 | 3.8 s |
+| one instance | 6000 | 31.0 | 193 | 0.2 s |
+| instance joins and leaves (stream of 300/s) | 6000 | 30.3 | 198 | 0.3 s |
+
+In that run the second instance owned partitions after 1,770 events were sent and left after 4,020.
 
 One listener thread handles all three partitions and each event is its own database transaction, which sets the pace;
 `spring.kafka.listener.concurrency=3` (one thread per partition, so per-order ordering is kept) is the obvious next step.

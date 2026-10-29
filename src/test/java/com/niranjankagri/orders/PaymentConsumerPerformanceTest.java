@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -52,6 +53,8 @@ import tools.jackson.databind.json.JsonMapper;
 class PaymentConsumerPerformanceTest {
 
     private static final int EVENTS = 6_000;
+    /** The rate of the steady stream in the rebalance test: 6,000 events take about 20 seconds. */
+    private static final int EVENTS_PER_SECOND = 300;
     /**
      * Far below what one instance reached (186 events/s on a Windows laptop with Docker Desktop, where every database
      * round trip crosses the VM): only a large drop fails the build. One listener thread and one transaction per event
@@ -113,26 +116,32 @@ class PaymentConsumerPerformanceTest {
     }
 
     /**
-     * A second instance joins while the backlog is processed, then leaves again: two rebalances in the middle of the
-     * stream. Every event must be applied exactly once, and progress may stop only briefly.
+     * A second instance joins and leaves while payments keep arriving: two rebalances in the middle of the stream, on
+     * any machine. (Against a ready backlog, a fast machine finished before the second instance had even started.)
+     * Every event must be applied exactly once, and progress may stop only briefly.
      */
     @Test
     @Order(2)
     void rebalancesWhileProcessingLoseNothingAndApplyNothingTwice() {
         List<Long> orders = insertOrders("rebalance", EVENTS);
         long processedBefore = processedEventCount();
+        Rebalances rebalances = new Rebalances();
 
         long start = System.nanoTime();
-        sendPayments(orders);
-        Progress progress = awaitAllPaid("rebalance", EVENTS, new Rebalances());
+        CompletableFuture<Void> stream = CompletableFuture.runAsync(() -> sendSteadily(orders, rebalances));
+        Progress progress = awaitAllPaid("rebalance", EVENTS, rebalances);
+        stream.join();
         double seconds = (System.nanoTime() - start) / 1e9;
 
-        record("instance joins and leaves", EVENTS, seconds, progress.longestPause());
-        notes.add(String.format("The second instance owned partitions after %d of %d events were applied and left at"
-                + " two thirds; each event was recorded once.", progress.paidWhenSecondJoined(), EVENTS));
-        assertThat(progress.paidWhenSecondJoined())
-                .as("the second instance took over partitions while there was still a backlog")
-                .isLessThan(EVENTS);
+        record("instance joins and leaves (stream of " + EVENTS_PER_SECOND + "/s)", EVENTS, seconds,
+                progress.longestPause());
+        notes.add(String.format("While %d payments were being sent, the second instance owned partitions after %d were"
+                        + " sent and left after %d; each event was recorded once.",
+                EVENTS, rebalances.sentWhenJoined, rebalances.sentWhenLeft));
+        assertThat(rebalances.sentWhenJoined).as("the second instance joined while events were still sent")
+                .isBetween(1, EVENTS - 1);
+        assertThat(rebalances.sentWhenLeft).as("the second instance left while events were still sent")
+                .isBetween(rebalances.sentWhenJoined, EVENTS - 1);
         assertThat(processedEventCount() - processedBefore).as("each event recorded exactly once").isEqualTo(EVENTS);
         assertThat(progress.longestPause()).isLessThan(MAX_PAUSE);
     }
@@ -163,9 +172,31 @@ class PaymentConsumerPerformanceTest {
         }
     }
 
+    /** Sends one payment per order at EVENTS_PER_SECOND (in slices every 100 ms), counting what has been sent. */
+    private static void sendSteadily(List<Long> orders, Rebalances rebalances) {
+        int slice = EVENTS_PER_SECOND / 10;
+        try (KafkaProducer<String, String> producer = new KafkaProducer<>(Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers(),
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class))) {
+            for (int i = 0; i < orders.size(); i++) {
+                long order = orders.get(i);
+                String payment = json.writeValueAsString(new PaymentCompleted(UUID.randomUUID(), order, Result.SUCCEEDED));
+                producer.send(new ProducerRecord<>(Topics.PAYMENTS_COMPLETED, Long.toString(order), payment));
+                if ((i + 1) % slice == 0) {
+                    producer.flush();
+                    rebalances.sent.set(i + 1);
+                    sleep(100);
+                }
+            }
+            producer.flush();
+            rebalances.sent.set(orders.size());
+        }
+    }
+
     /**
      * Polls every 100 ms until all orders of the batch are PAID, keeping the longest time without progress. With
-     * rebalances, it starts a second instance at a third of the batch and stops it at two thirds.
+     * rebalances, a second instance starts at once and stops when two thirds of the events have been sent.
      */
     private static Progress awaitAllPaid(String batch, int count, Rebalances rebalances) {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
@@ -182,14 +213,14 @@ class PaymentConsumerPerformanceTest {
                 paid = now;
             }
             if (rebalances != null) {
-                rebalances.step(paid, count);
+                rebalances.step(count);
             }
             sleep(100);
         }
         if (rebalances != null) {
             rebalances.stopSecond();
         }
-        return new Progress(Duration.ofNanos(longestPause), rebalances == null ? -1 : rebalances.paidWhenJoined);
+        return new Progress(Duration.ofNanos(longestPause));
     }
 
     private static long paidCount(String batch) {
@@ -218,31 +249,36 @@ class PaymentConsumerPerformanceTest {
     }
 
     /**
-     * The second instance: started at a third of the batch, stopped at two thirds. Both happen in the background, so
-     * the progress loop keeps sampling: a blocked loop would report the start-up time as a pause in processing.
+     * The second instance: started as soon as the stream begins, stopped once two thirds of the events are sent (the
+     * stream takes about 20 seconds, the start-up a few). Both happen in the background, so the progress loop keeps
+     * sampling: a blocked loop would report the start-up time as a pause in processing.
      */
     private static final class Rebalances {
 
+        private final AtomicInteger sent = new AtomicInteger();
         private CompletableFuture<ConfigurableApplicationContext> joining;
         private CompletableFuture<Void> leaving;
-        private volatile long paidWhenJoined = -1;
+        private volatile int sentWhenJoined = -1;
+        private volatile int sentWhenLeft = -1;
 
-        void step(long paid, int count) {
-            if (joining == null && paid >= count / 3) {
+        void step(int count) {
+            if (joining == null) {
                 joining = CompletableFuture.supplyAsync(() -> {
                     ConfigurableApplicationContext second = ServiceInstance.start(postgres, kafka, GROUP, null);
                     awaitPartitions(second);
-                    paidWhenJoined = paidCount("rebalance");
+                    sentWhenJoined = sent.get();
                     return second;
                 });
-            } else if (joining != null && joining.isDone() && leaving == null && paid >= 2L * count / 3) {
+            } else if (joining.isDone() && leaving == null && sent.get() >= 2 * count / 3) {
+                sentWhenLeft = sent.get();
                 leaving = joining.thenAccept(ConfigurableApplicationContext::close);
             }
         }
 
-        /** Makes sure the second instance is stopped when the batch is done (also if it finished before two thirds). */
+        /** Makes sure the second instance is stopped at the end (also if the stream finished first). */
         void stopSecond() {
             if (joining != null && leaving == null) {
+                sentWhenLeft = sent.get();
                 leaving = joining.thenAccept(ConfigurableApplicationContext::close);
             }
             if (leaving != null) {
@@ -264,5 +300,5 @@ class PaymentConsumerPerformanceTest {
         }
     }
 
-    private record Progress(Duration longestPause, long paidWhenSecondJoined) {}
+    private record Progress(Duration longestPause) {}
 }
