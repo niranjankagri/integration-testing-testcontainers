@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -67,7 +69,13 @@ public class PaymentListener {
 
     /** Records a bounded outcome label; event ids and order ids must never become metric labels. */
     private void recordOutcome(String outcome) {
-        metrics.counter("orders.payment.events", "outcome", outcome).increment();
+        // The listener transaction can still roll back after this method returns. Count only committed decisions.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                metrics.counter("orders.payment.events", "outcome", outcome).increment();
+            }
+        });
     }
 
     /** Records the event id; false if it was recorded before. Rolled back with the transaction if anything fails. */
