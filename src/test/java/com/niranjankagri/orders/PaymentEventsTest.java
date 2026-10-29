@@ -138,12 +138,18 @@ class PaymentEventsTest {
     void anEventForAnUnknownOrderIsRetriedThenDeadLettered() {
         long unknown = 987_654_321L;
         UUID eventId = UUID.randomUUID();
+        double failedBefore = paymentEventCount("delivery_failed");
+        double deadLetteredBefore = paymentEventCount("dead_lettered");
         try (KafkaProbe dlt = new KafkaProbe(kafkaContainer.getBootstrapServers(), Topics.PAYMENTS_COMPLETED_DLT)) {
             sendPayment(new PaymentCompleted(eventId, unknown, Result.SUCCEEDED));
 
             ConsumerRecord<String, String> dead = dlt.awaitRecord(r -> r.value().contains(eventId.toString()));
             assertThat(header(dead, KafkaHeaders.DLT_EXCEPTION_MESSAGE)).contains("No order " + unknown);
         }
+        await().untilAsserted(() -> {
+            assertThat(paymentEventCount("delivery_failed")).isGreaterThan(failedBefore);
+            assertThat(paymentEventCount("dead_lettered")).isEqualTo(deadLetteredBefore + 1);
+        });
         // Each attempt rolled back, including the processed-event mark: replaying the event from the dead-letter
         // topic later (once the order exists) would still be applied.
         Integer marked = jdbc.sql("SELECT count(*) FROM processed_events WHERE event_id = ?")
@@ -151,6 +157,42 @@ class PaymentEventsTest {
                 .query(Integer.class)
                 .single();
         assertThat(marked).isZero();
+    }
+
+    /** A dead-lettered event can be replayed after its temporarily unknown order becomes available. */
+    @Test
+    void aDeadLetteredPaymentCanBeReplayedWhenItsOrderAppears() {
+        long orderId = 9_876_543_210L;
+        UUID eventId = UUID.randomUUID();
+        PaymentCompleted payment = new PaymentCompleted(eventId, orderId, Result.SUCCEEDED);
+        String payload = json.writeValueAsString(payment);
+
+        try (KafkaProbe dlt = new KafkaProbe(kafkaContainer.getBootstrapServers(), Topics.PAYMENTS_COMPLETED_DLT)) {
+            kafka.send(Topics.PAYMENTS_COMPLETED, String.valueOf(orderId), payload);
+            ConsumerRecord<String, String> dead = dlt.awaitRecord(record -> payload.equals(record.value()));
+            assertThat(header(dead, KafkaHeaders.DLT_EXCEPTION_MESSAGE)).contains("No order " + orderId);
+
+            // The order service catches up after the payment event has already been dead-lettered.
+            jdbc.sql("""
+                            INSERT INTO orders (id, customer, sku, quantity, status, created_at)
+                            OVERRIDING SYSTEM VALUE
+                            VALUES (?, 'late-order', 'SKU-1', 1, 'PLACED', now())
+                            """)
+                    .param(orderId)
+                    .update();
+
+            // Replay the original payload to the input topic, as an operator or replay job would.
+            kafka.send(Topics.PAYMENTS_COMPLETED, String.valueOf(orderId), dead.value());
+        }
+
+        await().atMost(TIMEOUT)
+                .untilAsserted(() -> assertThat(orders.findById(orderId).orElseThrow().status())
+                        .isEqualTo(OrderStatus.PAID));
+        Integer marked = jdbc.sql("SELECT count(*) FROM processed_events WHERE event_id = ?")
+                .param(eventId)
+                .query(Integer.class)
+                .single();
+        assertThat(marked).isEqualTo(1);
     }
 
     /** Places an order for a new customer through the service. */
