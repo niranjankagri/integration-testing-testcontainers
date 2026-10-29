@@ -21,10 +21,11 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 | `DatabaseMigrationTest` (4) | Flyway migrations run on the real PostgreSQL 18; the database itself rejects bad data | `flyway_schema_history`, check constraints, unique event ids |
 | `OrderGraphQlApiTest` (6) | queries, the mutation, validation errors, schema rejections, data isolation | `HttpGraphQlTester` over real HTTP |
 | `OrderPlacedEventTest` (2) | every placed order publishes `OrderPlaced`, keyed by order id; an invalid order publishes nothing | a probe consumer on the real topic |
-| `PaymentEventsTest` (6) | payment results update orders; duplicates are applied once; broken, incomplete and unknown-order events go to the dead-letter topic without blocking the partition | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
+| `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
+| `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
 
-**24 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+**25 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -82,8 +83,10 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
 
 The service exposes `/actuator/health` for a basic availability check and `/actuator/prometheus` for scraping. The
 Prometheus registry exports standard JVM and HTTP server measurements, plus the bounded
-`orders.payment.events` counter with outcomes `paid`, `cancelled`, `duplicate` and `ignored`. It never tags a metric
-with a customer, order id or event id, so traffic cannot create unbounded time series.
+`orders.payment.events` counter with outcomes `paid`, `cancelled`, `duplicate`, `ignored`, `delivery_failed`,
+`dead_lettered` and `recovery_failed`. It never tags a metric with a customer, order id or event id, so traffic cannot
+create unbounded time series. Integration tests also prove a dead-lettered payment can be replayed after its order
+becomes available.
 
 Only `health` and `prometheus` are exposed over HTTP; endpoints such as `/actuator/env` remain unavailable. The
 integration tests check both scrape format and the endpoint allowlist. With the service running locally:
@@ -99,7 +102,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 24 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 25 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
