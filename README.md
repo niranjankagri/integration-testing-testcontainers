@@ -24,7 +24,10 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 | `PaymentEventsTest` (6) | payment results update orders; duplicates are applied once; broken, incomplete and unknown-order events go to the dead-letter topic without blocking the partition | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 
-**21 tests, about 21 seconds of test time** including container start-up (once the images are pulled).
+**24 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+
+The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
+scrape endpoints available over HTTP.
 
 ## Why real containers instead of mocks or an in-memory database
 
@@ -75,13 +78,28 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
   database).
 - Missing required arguments and unknown fields are rejected by the schema before any code runs.
 
+## Health and Prometheus metrics
+
+The service exposes `/actuator/health` for a basic availability check and `/actuator/prometheus` for scraping. The
+Prometheus registry exports standard JVM and HTTP server measurements, plus the bounded
+`orders.payment.events` counter with outcomes `paid`, `cancelled`, `duplicate` and `ignored`. It never tags a metric
+with a customer, order id or event id, so traffic cannot create unbounded time series.
+
+Only `health` and `prometheus` are exposed over HTTP; endpoints such as `/actuator/env` remain unavailable. The
+integration tests check both scrape format and the endpoint allowlist. With the service running locally:
+
+```
+curl http://localhost:8080/actuator/health
+curl http://localhost:8080/actuator/prometheus
+```
+
 ## Running it (Windows cmd)
 
 Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 21 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 24 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
