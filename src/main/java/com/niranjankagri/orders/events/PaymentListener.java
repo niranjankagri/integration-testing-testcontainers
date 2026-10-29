@@ -3,6 +3,7 @@ package com.niranjankagri.orders.events;
 import com.niranjankagri.orders.order.Order;
 import com.niranjankagri.orders.order.OrderRepository;
 import com.niranjankagri.orders.order.OrderStatus;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -23,12 +24,14 @@ public class PaymentListener {
     private final OrderRepository orders;
     private final JdbcClient jdbc;
     private final JsonMapper json;
+    private final MeterRegistry metrics;
 
     /** Spring injects the repository, the JDBC client for the processed-event table and the JSON mapper. */
-    public PaymentListener(OrderRepository orders, JdbcClient jdbc, JsonMapper json) {
+    public PaymentListener(OrderRepository orders, JdbcClient jdbc, JsonMapper json, MeterRegistry metrics) {
         this.orders = orders;
         this.jdbc = jdbc;
         this.json = json;
+        this.metrics = metrics;
     }
 
     /**
@@ -45,6 +48,7 @@ public class PaymentListener {
         }
         if (!markProcessed(event)) {
             log.info("Skipping event {}: already processed", event.eventId());
+            recordOutcome("duplicate");
             return;
         }
         // An unknown order is retried: the event may have overtaken the order's own transaction. If it is still
@@ -53,10 +57,17 @@ public class PaymentListener {
                 .orElseThrow(() -> new UnknownOrderException(event.orderId()));
         if (order.status() != OrderStatus.PLACED) {
             log.warn("Order {} is already {}; payment event {} ignored", order.id(), order.status(), event.eventId());
+            recordOutcome("ignored");
             return;
         }
         OrderStatus next = event.result() == PaymentCompleted.Result.SUCCEEDED ? OrderStatus.PAID : OrderStatus.CANCELLED;
         orders.save(order.withStatus(next));
+        recordOutcome(next == OrderStatus.PAID ? "paid" : "cancelled");
+    }
+
+    /** Records a bounded outcome label; event ids and order ids must never become metric labels. */
+    private void recordOutcome(String outcome) {
+        metrics.counter("orders.payment.events", "outcome", outcome).increment();
     }
 
     /** Records the event id; false if it was recorded before. Rolled back with the transaction if anything fails. */

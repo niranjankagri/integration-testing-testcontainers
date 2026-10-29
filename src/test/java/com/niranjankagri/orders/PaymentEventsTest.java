@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -51,12 +52,17 @@ class PaymentEventsTest {
     @Autowired
     JsonMapper json;
 
+    @Autowired
+    MeterRegistry metrics;
+
     /** A successful payment marks the order PAID. */
     @Test
     void successfulPaymentMarksTheOrderPaid() {
+        double before = paymentEventCount("paid");
         Order order = newOrder();
         sendPayment(new PaymentCompleted(UUID.randomUUID(), order.id(), Result.SUCCEEDED));
         awaitStatus(order, OrderStatus.PAID);
+        await().untilAsserted(() -> assertThat(paymentEventCount("paid")).isEqualTo(before + 1));
     }
 
     /** A failed payment cancels the order. */
@@ -75,6 +81,7 @@ class PaymentEventsTest {
         Order first = newOrder();
         Order second = newOrder();
         UUID eventId = UUID.randomUUID();
+        double duplicatesBefore = paymentEventCount("duplicate");
 
         sendPayment(new PaymentCompleted(eventId, first.id(), Result.FAILED));
         awaitStatus(first, OrderStatus.CANCELLED);
@@ -84,6 +91,7 @@ class PaymentEventsTest {
         // the duplicate): once it is applied, the duplicate has been handled.
         sendPayment(new PaymentCompleted(UUID.randomUUID(), second.id(), Result.FAILED));
         awaitStatus(second, OrderStatus.CANCELLED);
+        await().untilAsserted(() -> assertThat(paymentEventCount("duplicate")).isEqualTo(duplicatesBefore + 1));
         Integer applied = jdbc.sql("SELECT count(*) FROM processed_events WHERE event_id = ?")
                 .param(eventId)
                 .query(Integer.class)
@@ -160,6 +168,15 @@ class PaymentEventsTest {
     private void awaitStatus(Order order, OrderStatus expected) {
         await().atMost(TIMEOUT)
                 .untilAsserted(() -> assertThat(orders.findById(order.id()).orElseThrow().status()).isEqualTo(expected));
+    }
+
+    /** Number of listener decisions currently recorded for one bounded outcome label. */
+    private double paymentEventCount(String outcome) {
+        return metrics.find("orders.payment.events")
+                .tag("outcome", outcome)
+                .counter() == null
+                ? 0
+                : metrics.find("orders.payment.events").tag("outcome", outcome).counter().count();
     }
 
     /** A record header as text, or empty when the record does not have it. */
