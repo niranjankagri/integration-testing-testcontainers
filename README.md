@@ -30,6 +30,32 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
 
+## Local Prometheus and Grafana
+
+The checked-in observability stack scrapes the running service every 15 seconds and provisions a Grafana dashboard
+for payment outcomes, delivery and recovery failures, dead-letter activity, and HTTP request rate. Prometheus and
+Grafana ports bind to localhost only. The container images are pinned in `compose.observability.yml`.
+
+Start the service in one terminal, then start the stack from the repository root:
+
+```
+mvnw.cmd spring-boot:test-run
+docker compose -f compose.observability.yml up -d
+```
+
+Open [Grafana](http://localhost:3000) and sign in with the local default credentials `admin` / `admin`; Grafana
+prompts you to set a new password. The **Order Service / Order Service Overview** dashboard is provisioned
+automatically. Prometheus is available at [localhost:9090](http://localhost:9090); check **Status / Targets** and
+confirm `order-service` is `UP` if the dashboard has no data. Stop the stack with:
+
+```
+docker compose -f compose.observability.yml down
+```
+
+The Prometheus and Grafana data volumes survive `down`; remove them with `docker compose -f compose.observability.yml
+down -v` when you want to reset local data. This stack is for local development and does
+not add the observability ports to the application itself.
+
 ## Why real containers instead of mocks or an in-memory database
 
 - **H2 is not PostgreSQL.** Syntax, types, constraints and `ON CONFLICT` differ; a migration that passes on H2 can
@@ -115,6 +141,9 @@ src/main/java/com/niranjankagri/orders/
   events/     Topics, OrderPlaced, PaymentCompleted, OrderEventPublisher, PaymentListener, KafkaConfig
 src/main/resources/
   graphql/schema.graphqls    db/migration/V1__create_orders.sql    application.properties
+observability/
+  prometheus/prometheus.yml   grafana/provisioning/   grafana/dashboards/
+compose.observability.yml
 src/test/java/com/niranjankagri/orders/
   TestcontainersConfiguration   pinned PostgreSQL and Kafka containers (@ServiceConnection)
   IntegrationTest               one annotation, one cached context, containers started once
