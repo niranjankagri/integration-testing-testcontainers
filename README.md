@@ -156,6 +156,7 @@ Needs Java 21 or later and Docker Desktop.
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
 mvnw.cmd verify                       all 30 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
+mvnw.cmd verify -Pperformance         only the consumer throughput and rebalancing tests (a few minutes)
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
 
@@ -179,6 +180,31 @@ src/test/java/com/niranjankagri/orders/
   *Test                         the tests listed above
   TestOrderServiceApplication   runs the service locally with the containers
 ```
+
+## Consumer performance
+
+`PaymentConsumerPerformanceTest` (JUnit tag `performance`, left out of the normal build) sends 6,000 payments for
+existing orders twice, on its own PostgreSQL and Kafka:
+
+- **One instance** works through the backlog; the build fails below 50 events per second.
+- **An instance joins and leaves** while 6,000 more payments arrive as a steady stream (300 per second): two
+  consumer-group rebalances in the middle of the stream, checked to happen before the last event is sent. Every event
+  must be applied exactly once (all orders `PAID`, one `processed_events` row each), and progress may stop for at most
+  30 seconds. A steady stream, because against a ready backlog a fast CI runner finished before the second instance
+  had started.
+
+The thresholds are floors that catch a large regression, not benchmarks. First results:
+
+| Phase | Windows laptop, Docker Desktop | GitHub runner (ubuntu-latest) |
+|---|---:|---:|
+| one instance, 6,000-event backlog | 193 events/s, longest pause 0.2 s | 826 events/s, longest pause 0.1 s |
+| instance joins and leaves, stream of 300/s | all 6,000 applied once, longest pause 0.3 s | all 6,000 applied once, longest pause 0.3 s |
+
+Docker Desktop runs the containers in a VM, so every database round trip costs more on the laptop.
+
+One listener thread handles all three partitions and each event is its own database transaction, which sets the pace;
+`spring.kafka.listener.concurrency=3` (one thread per partition, so per-order ordering is kept) is the obvious next step.
+CI runs these tests weekly and by hand and puts the report in the job summary.
 
 ## CI
 

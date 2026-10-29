@@ -101,4 +101,5 @@ table in the job summary; the reports are uploaded when a test fails.
   if Kafka acknowledges a publish but the database mark does not commit.
 - Consumer-group lag and dead-letter alerts are in this sample (`ConsumerLagMetrics`, the Prometheus rules, and
   [dead-letter-replay.md](dead-letter-replay.md)); a real setup routes the alerts to on-call through Alertmanager.
-- Performance tests of the consumer (throughput, rebalancing), which these functional tests do not cover.
+- Consumer throughput and rebalancing are covered by `PaymentConsumerPerformanceTest` with deliberately low floors; a
+  real setup measures against production-like volumes and hardware, and tunes listener concurrency and batch size.

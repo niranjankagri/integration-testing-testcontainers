@@ -18,13 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.context.TypeExcludeFilter;
-import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.core.type.classreading.MetadataReader;
-import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
@@ -108,29 +102,16 @@ class OutboxCrashRecoveryTest {
      * Error leaves the claim in place, exactly as a process that died at that moment would.
      */
     private static ConfigurableApplicationContext startInstance(boolean crashAfterAcknowledgement) {
-        return new SpringApplicationBuilder(OrderServiceApplication.class)
-                .initializers(context -> {
-                    GenericApplicationContext generic = (GenericApplicationContext) context;
-                    // Component scanning would also find TestcontainersConfiguration and start extra containers.
-                    generic.getBeanFactory().registerSingleton("skipTestConfigurations", new SkipTestComponents());
-                    if (crashAfterAcknowledgement) {
-                        generic.registerBean(
-                                "crashingOutbox", CrashAfterAcknowledgement.class, bean -> bean.setPrimary(true));
-                    }
-                })
-                // Command-line arguments, because they override application.properties; properties() would only
-                // set defaults, and the 30-second lease from application.properties would win.
-                .run(
-                        "--spring.datasource.url=" + postgres.getJdbcUrl(),
-                        "--spring.datasource.username=" + postgres.getUsername(),
-                        "--spring.datasource.password=" + postgres.getPassword(),
-                        "--spring.kafka.bootstrap-servers=" + kafka.getBootstrapServers(),
-                        "--spring.kafka.consumer.group-id=outbox-crash-recovery-test",
-                        "--server.port=0",
-                        "--orders.outbox.poll-interval-ms=100",
-                        "--orders.outbox.claim-lease-seconds=" + LEASE_SECONDS,
-                        // No trace collector runs in tests: the exporter would retry on shutdown for seconds.
-                        "--management.tracing.export.enabled=false");
+        return ServiceInstance.start(
+                postgres,
+                kafka,
+                "outbox-crash-recovery-test",
+                crashAfterAcknowledgement
+                        ? context -> context.registerBean(
+                                "crashingOutbox", CrashAfterAcknowledgement.class, bean -> bean.setPrimary(true))
+                        : null,
+                "--orders.outbox.poll-interval-ms=100",
+                "--orders.outbox.claim-lease-seconds=" + LEASE_SECONDS);
     }
 
     /** The outbox row of one event, read with plain JDBC from this class's database. */
@@ -171,25 +152,6 @@ class OutboxCrashRecoveryTest {
     static class SimulatedCrash extends Error {
         SimulatedCrash() {
             super("simulated process crash after the Kafka acknowledgement");
-        }
-    }
-
-    /** Leaves test-only configuration (TestcontainersConfiguration) out of the component scan, as @SpringBootTest does. */
-    static class SkipTestComponents extends TypeExcludeFilter {
-
-        @Override
-        public boolean match(MetadataReader reader, MetadataReaderFactory factory) {
-            return reader.getAnnotationMetadata().isAnnotated(TestComponent.class.getName());
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            return other != null && other.getClass() == getClass();
-        }
-
-        @Override
-        public int hashCode() {
-            return getClass().hashCode();
         }
     }
 }
