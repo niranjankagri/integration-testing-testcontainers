@@ -81,3 +81,30 @@ jobs:
           }
           promtool check config /etc/prometheus/prometheus.yml
           promtool test rules /etc/prometheus/tests/order-service.test.yml
+
+  # Consumer throughput and rebalancing (PaymentConsumerPerformanceTest): too slow for every pull request, so it runs
+  # with the weekly schedule and by hand. The report goes into the job summary and is kept as an artifact.
+  performance:
+    name: Consumer performance (weekly)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Throughput and rebalancing
+        run: ./mvnw -B verify -Pperformance
+      - name: Report
+        if: ${{ !cancelled() }}
+        run: cat target/performance/consumer-performance.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: consumer-performance
+          path: target/performance
+          if-no-files-found: warn
+          retention-days: 30
