@@ -65,3 +65,19 @@ jobs:
           name: surefire-reports
           path: target/surefire-reports
           retention-days: 7
+
+  prometheus:
+    name: Prometheus configuration and alert rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # promtool from the same image the local stack runs: checks the configuration and rules, then runs the rule
+      # unit tests in observability/prometheus/tests (each alert fires when it should and stays quiet otherwise)
+      - name: Check the configuration and test the alert rules
+        run: |
+          promtool() {
+            docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/etc/prometheus:ro" prom/prometheus:v3.15.1 "$@"
+          }
+          promtool check config /etc/prometheus/prometheus.yml
+          promtool test rules /etc/prometheus/tests/order-service.test.yml

@@ -24,9 +24,10 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 | `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
+| `ConsumerLagTest` (1) | the consumer-lag gauge counts uncommitted payment events while the listener is stopped, and returns to zero after the backlog is processed | the listener container paused and resumed; three payments sent while paused |
 | `OutboxCrashRecoveryTest` (1) | a relay that dies after Kafka acknowledged an event, before the database mark: a restarted instance sends the event again with the same id once the claim lease expires, and marks it published | two service instances one after the other on their own PostgreSQL and Kafka; the crash is an `Error` thrown from `markPublished` |
 
-**29 tests** cover database migrations, the GraphQL API, Kafka event processing, crash recovery of the outbox, and the
+**30 tests** cover database migrations, the GraphQL API, Kafka event processing, crash recovery of the outbox, and the
 operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
@@ -36,7 +37,7 @@ scrape endpoints available over HTTP.
 
 The checked-in observability stack scrapes the running service every 15 seconds, stores traces in Tempo, and
 provisions a Grafana dashboard for payment and outbox outcomes, delivery and recovery failures, dead-letter activity,
-published outbox cleanup, and HTTP request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
+published outbox cleanup, payment consumer lag, and HTTP request rate. Spring Boot records HTTP spans and propagates trace context through observed Kafka producer and
 consumer operations. Prometheus, Grafana, and Tempo ports bind to localhost only. The container images are pinned in
 `compose.observability.yml`.
 
@@ -57,8 +58,10 @@ Prometheus is available at [localhost:9090](http://localhost:9090); check **Stat
 
 Prometheus also evaluates the rules in `observability/prometheus/rules/order-service.yml`. Check
 [Alerts](http://localhost:9090/alerts) for service availability, dead-lettered payments, recovery publish failures,
-and an outbox event waiting longer than one minute; [Rules](http://localhost:9090/rules) shows their evaluation
-state. Alert notifications are not configured in this local stack. Stop the stack with:
+an outbox event waiting longer than one minute, and a payment consumer more than 100 events behind for five minutes;
+[Rules](http://localhost:9090/rules) shows their evaluation state. The rules have unit tests in
+`observability/prometheus/tests`, which CI runs with `promtool` (each alert fires when it should and stays quiet
+otherwise). Alert notifications are not configured in this local stack. Stop the stack with:
 
 ```
 docker compose -f compose.observability.yml down
@@ -129,7 +132,13 @@ Prometheus registry exports standard JVM and HTTP server measurements, plus the 
 `dead_lettered` and `recovery_failed`. Outbox metrics report pending event count, oldest pending event age, successful
 publishes, failed relay attempts, and rows removed by retention. They never tag a metric with a customer, order id or
 event id, so traffic cannot create unbounded time series. Integration tests also prove a dead-lettered payment can be
-replayed after its order becomes available.
+replayed after its order becomes available; [docs/dead-letter-replay.md](docs/dead-letter-replay.md) is the procedure
+to inspect and replay dead-lettered events with Kafka's command-line tools.
+
+`orders.payment.consumer.lag` is the payment consumer group's lag: log-end offsets of `payments.completed` minus the
+group's committed offsets, read from the broker at each scrape. Kafka's own client metric
+(`kafka_consumer_fetch_manager_records_lag_max`) is also exported, but it is measured while the consumer fetches, so a
+stuck or paused listener stops reporting it; the broker-side gauge keeps rising.
 
 Only `health` and `prometheus` are exposed over HTTP; endpoints such as `/actuator/env` remain unavailable. The
 integration tests check both scrape format and the endpoint allowlist. With the service running locally:
@@ -145,7 +154,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 29 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 30 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
@@ -155,11 +164,12 @@ mvnw.cmd spring-boot:test-run         the service with the same containers; Grap
 ```
 src/main/java/com/niranjankagri/orders/
   order/      Order, OrderRepository, OrderService, OrderGraphQlController, PlaceOrderInput, GraphQlErrors
-  events/     Topics, OrderPlaced, PaymentCompleted, OutboxEventStore, OrderOutboxRelay, PaymentListener, KafkaConfig
+  events/     Topics, OrderPlaced, PaymentCompleted, OutboxEventStore, OrderOutboxRelay, PaymentListener, KafkaConfig,
+              ConsumerLagMetrics
 src/main/resources/
   graphql/schema.graphqls    db/migration/V1__create_orders.sql    application.properties
 observability/
-  prometheus/prometheus.yml   prometheus/rules/   tempo/tempo.yml
+  prometheus/prometheus.yml   prometheus/rules/   prometheus/tests/ (alert rule tests)   tempo/tempo.yml
   grafana/provisioning/       grafana/dashboards/
 compose.observability.yml
 src/test/java/com/niranjankagri/orders/
@@ -175,6 +185,8 @@ src/test/java/com/niranjankagri/orders/
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `mvnw verify` on GitHub's Ubuntu runner, which has Docker,
 so the containers start exactly as locally. A table of test classes, counts and times goes into the job summary. The JUnit XML is kept as the
 **junit-integration** artifact, which [Automation Coverage & Quality Intelligence](https://github.com/niranjankagri/automation-coverage-quality-intelligence) collects.
+A second job checks the Prometheus configuration and runs the alert rule tests with `promtool` from the same image the
+local stack uses.
 
 CI also runs every Friday at 23:15 UTC without a code change, so a broken dependency or a change outside the repository shows up within a week. Dependabot proposes dependency and GitHub Actions updates once a month (minor and patch updates grouped, major versions as separate pull requests).
 
