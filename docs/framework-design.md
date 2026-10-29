@@ -54,6 +54,9 @@ Everything else (authentication, more entities, a real payment service) would ad
 - **Transactional outbox:** `OrderPlaced` is inserted in the same PostgreSQL transaction as its order. The relay
   publishes only committed rows and marks them after Kafka acknowledges. A crash after broker acknowledgement but
   before that mark can produce a duplicate; the persisted event id is stable for consumer deduplication.
+  `OutboxCrashRecoveryTest` runs exactly that crash: one service instance sends the event and dies before the mark,
+  a second instance started afterwards takes the event over when the claim lease expires, sends it again with the
+  same id and marks it published. It uses its own containers, so the shared test context's relay cannot interfere.
 - **Keys:** events are keyed by order id, so all events of one order land in one partition and keep their order.
 - **Idempotency:** the event id goes into `processed_events` in the same transaction as the order change. A duplicate
   is skipped; if processing fails, the mark rolls back with it, so a retry or a later replay still works.
@@ -96,7 +99,5 @@ table in the job summary; the reports are uploaded when a test fails.
   the audit policy. The claim lease supports multiple relay instances in this sample.
 - A 30-second claim lease recovers work from a crashed relay; stable event ids still let consumers handle a duplicate
   if Kafka acknowledges a publish but the database mark does not commit.
-- A process-crash test between commit and publish acknowledgement, beyond the atomic rollback and successful relay
-  integration coverage in this sample.
 - Consumer lag and dead-letter monitoring, and a documented way to replay dead-lettered events.
 - Performance tests of the consumer (throughput, rebalancing), which these functional tests do not cover.

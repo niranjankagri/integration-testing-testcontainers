@@ -46,6 +46,15 @@ public final class KafkaProbe implements AutoCloseable {
         }, record -> record != null);
     }
 
+    /** Waits until at least `count` records matching the condition have arrived (at most 15 seconds); returns them. */
+    public List<ConsumerRecord<String, String>> awaitRecords(
+            Predicate<ConsumerRecord<String, String>> condition, int count) {
+        return await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ZERO).until(() -> {
+            consumer.poll(Duration.ofMillis(200)).forEach(seen::add);
+            return seen.stream().filter(condition).toList();
+        }, matching -> matching.size() >= count);
+    }
+
     /** The values of every record read so far. */
     public List<String> seenValues() {
         return seen.stream().map(ConsumerRecord::value).toList();

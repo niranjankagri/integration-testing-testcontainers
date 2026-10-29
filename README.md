@@ -24,8 +24,10 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 | `PaymentEventsTest` (7) | payment results update orders; duplicates are applied once; dead-lettered events can be replayed after missing orders appear | events sent with `KafkaTemplate`, Awaitility instead of sleeps |
 | `KafkaConfigTest` (3) | which failures are retried and which go straight to the dead-letter topic | unit test, no containers |
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
+| `OutboxCrashRecoveryTest` (1) | a relay that dies after Kafka acknowledged an event, before the database mark: a restarted instance sends the event again with the same id once the claim lease expires, and marks it published | two service instances one after the other on their own PostgreSQL and Kafka; the crash is an `Error` thrown from `markPublished` |
 
-**28 tests** cover database migrations, the GraphQL API, Kafka event processing, and the operational endpoints.
+**29 tests** cover database migrations, the GraphQL API, Kafka event processing, crash recovery of the outbox, and the
+operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -140,7 +142,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 28 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 29 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
 ```
@@ -180,7 +182,9 @@ CI also runs every Friday at 23:15 UTC without a code change, so a broken depend
 - `OrderPlaced` uses an at-least-once transactional outbox. A crash after Kafka accepts a message but before the
   database marks it published can cause a duplicate; the stable event id lets consumers deduplicate it. PostgreSQL
   claim leases let multiple relay instances work concurrently, and only the oldest unpublished event per order can
-  be claimed so retries do not let later events overtake it. A crashed worker's claim becomes available after 30 seconds.
+  be claimed so retries do not let later events overtake it. A crashed worker's claim becomes available after 30 seconds
+  (`ORDERS_OUTBOX_CLAIM_LEASE_SECONDS`); `OutboxCrashRecoveryTest` proves the takeover and the duplicate with a real
+  restart.
 - Published outbox rows are removed in batches after 30 days by default. Set `ORDERS_OUTBOX_RETENTION_DAYS` to match
   the service's audit policy; archive events elsewhere if they must be retained longer. Pending rows are never removed.
 - One service. Contract tests between producer and consumer teams (for example with Pact or a schema registry) are
