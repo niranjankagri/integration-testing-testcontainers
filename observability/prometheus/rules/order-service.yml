@@ -28,3 +28,12 @@ groups:
         annotations:
           summary: Kafka failed to publish a recovered payment event
           description: At least one dead-letter recovery publish failed in the last five minutes.
+
+      - alert: OrderOutboxStalled
+        expr: orders_outbox_oldest_pending_seconds > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: An order event has been waiting in the outbox for over one minute
+          description: Check Kafka availability and the order service outbox relay logs.
