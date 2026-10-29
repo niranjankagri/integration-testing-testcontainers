@@ -1,0 +1,30 @@
+groups:
+  - name: order-service
+    interval: 15s
+    rules:
+      - alert: OrderServiceUnavailable
+        expr: up{job="order-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Order service metrics endpoint is unavailable
+          description: Prometheus has not scraped the order service successfully for one minute.
+
+      - alert: PaymentDeadLettered
+        expr: increase(orders_payment_events_total{outcome="dead_lettered"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A payment event was sent to the dead-letter topic
+          description: At least one payment event was dead-lettered in the last five minutes.
+
+      - alert: PaymentRecoveryFailed
+        expr: increase(orders_payment_events_total{outcome="recovery_failed"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Kafka failed to publish a recovered payment event
+          description: At least one dead-letter recovery publish failed in the last five minutes.

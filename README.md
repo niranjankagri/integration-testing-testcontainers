@@ -51,7 +51,12 @@ Open [Grafana](http://localhost:3000) and sign in with the local default credent
 prompts you to set a new password. The **Order Service / Order Service Overview** dashboard is provisioned
 automatically. To inspect traces, open **Explore**, select **Tempo**, and search for the `orderservice` service.
 Prometheus is available at [localhost:9090](http://localhost:9090); check **Status / Targets** and confirm
-`order-service` is `UP` if the dashboard has no data. Stop the stack with:
+`order-service` is `UP` if the dashboard has no data.
+
+Prometheus also evaluates the rules in `observability/prometheus/rules/order-service.yml`. Check
+[Alerts](http://localhost:9090/alerts) for service availability, dead-lettered payments, and recovery publish
+failures; [Rules](http://localhost:9090/rules) shows their evaluation state. Alert notifications are not configured
+in this local stack. Stop the stack with:
 
 ```
 docker compose -f compose.observability.yml down
@@ -148,7 +153,8 @@ src/main/java/com/niranjankagri/orders/
 src/main/resources/
   graphql/schema.graphqls    db/migration/V1__create_orders.sql    application.properties
 observability/
-  prometheus/prometheus.yml   tempo/tempo.yml   grafana/provisioning/   grafana/dashboards/
+  prometheus/prometheus.yml   prometheus/rules/   tempo/tempo.yml
+  grafana/provisioning/       grafana/dashboards/
 compose.observability.yml
 src/test/java/com/niranjankagri/orders/
   TestcontainersConfiguration   pinned PostgreSQL and Kafka containers (@ServiceConnection)
