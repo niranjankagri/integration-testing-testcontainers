@@ -45,7 +45,7 @@ class OrderPlacedEventTest {
 
     /** Placing an order sends OrderPlaced, keyed by the order id, with the order's data and an event id. */
     @Test
-    void placingAnOrderPublishesOrderPlacedKeyedByTheOrderId() {
+    void tc301_placingAnOrderPublishesOrderPlacedKeyedByTheOrderId() {
         String customer = "customer-" + UUID.randomUUID();
         try (KafkaProbe probe = new KafkaProbe(kafka.getBootstrapServers(), Topics.ORDERS_PLACED)) {
             String id = graphQl.document("""
@@ -81,7 +81,7 @@ class OrderPlacedEventTest {
 
     /** The order and its outgoing event are both removed when their shared transaction rolls back. */
     @Test
-    void rollingBackAnOrderAlsoRollsBackItsOutboxEvent() {
+    void tc302_rollingBackAnOrderAlsoRollsBackItsOutboxEvent() {
         AtomicReference<Long> orderId = new AtomicReference<>();
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
 
@@ -106,7 +106,7 @@ class OrderPlacedEventTest {
 
     /** A refused order sends no event; proven by waiting for a later valid order's event instead of sleeping. */
     @Test
-    void anInvalidOrderPublishesNothing() {
+    void tc303_anInvalidOrderPublishesNothing() {
         String customer = "customer-" + UUID.randomUUID();
         try (KafkaProbe probe = new KafkaProbe(kafka.getBootstrapServers(), Topics.ORDERS_PLACED)) {
             graphQl.document("""

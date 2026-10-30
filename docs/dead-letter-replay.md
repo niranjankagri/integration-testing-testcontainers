@@ -70,6 +70,6 @@ no longer `PLACED` is ignored (counted as `ignored`), so a stale payment cannot 
 
 ## How this is tested
 
-`PaymentEventsTest.aDeadLetteredPaymentCanBeReplayedWhenItsOrderAppears` runs this procedure in code: a payment for an
+`PaymentEventsTest.tc310_aDeadLetteredPaymentCanBeReplayedWhenItsOrderAppears` runs this procedure in code: a payment for an
 unknown order is dead-lettered, the order is created, the dead-lettered value is sent to `payments.completed` with its
 key, and the order becomes `PAID` with the event id recorded once.

@@ -33,6 +33,8 @@ operational endpoints.
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
 
+Every test except the `KafkaConfigTest` unit test starts with its case ID (`tc306_aRedeliveredEventIsAppliedOnlyOnce`); the 29 cases are written out for a manual run against the running service, with GraphQL queries, Kafka messages and SQL, in [docs/manual-test-cases.md](docs/manual-test-cases.md): API TC-201 to TC-206, events TC-301 to TC-312, database TC-401 to TC-406, operations and performance TC-501 to TC-505.
+
 ## Local Prometheus, Grafana, and Tempo
 
 The checked-in observability stack scrapes the running service every 15 seconds, stores traces in Tempo, and
@@ -92,17 +94,17 @@ depends on a guessed sleep.
 
 Proving that something does **not** happen needs a bound too. The tests send a later event that must be processed
 after the one under test (same key, same partition) and wait for that: once it is done, the earlier one has been
-handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
+handled. See `tc306_aRedeliveredEventIsAppliedOnlyOnce`.
 
 ## Event handling the tests pin down
 
 | Situation | Expected behaviour | Test |
 |---|---|---|
-| The same event delivered twice (Kafka delivers at least once) | applied once, by event id, even if the copy differs | `aRedeliveredEventIsAppliedOnlyOnce` |
-| Broken JSON | straight to `payments.completed.DLT`, no retries; later events for the same order still processed | `brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents` |
-| Required field missing | straight to the dead-letter topic | `anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic` |
-| Unknown order (maybe not committed yet) | retried, then dead-lettered; nothing marked as processed, so a replay can still work | `anEventForAnUnknownOrderIsRetriedThenDeadLettered` |
-| Order placed | order and `OrderPlaced` outbox row commit together; the relay publishes it keyed by order id | `placingAnOrderPublishesOrderPlacedKeyedByTheOrderId`, `rollingBackAnOrderAlsoRollsBackItsOutboxEvent` |
+| The same event delivered twice (Kafka delivers at least once) | applied once, by event id, even if the copy differs | `tc306_aRedeliveredEventIsAppliedOnlyOnce` |
+| Broken JSON | straight to `payments.completed.DLT`, no retries; later events for the same order still processed | `tc307_brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents` |
+| Required field missing | straight to the dead-letter topic | `tc308_anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic` |
+| Unknown order (maybe not committed yet) | retried, then dead-lettered; nothing marked as processed, so a replay can still work | `tc309_anEventForAnUnknownOrderIsRetriedThenDeadLettered` |
+| Order placed | order and `OrderPlaced` outbox row commit together; the relay publishes it keyed by order id | `tc301_placingAnOrderPublishesOrderPlacedKeyedByTheOrderId`, `tc302_rollingBackAnOrderAlsoRollsBackItsOutboxEvent` |
 
 ## What the tests found
 
@@ -112,7 +114,7 @@ handled. See `aRedeliveredEventIsAppliedOnlyOnce`.
 - **A gap in my own tests.** As a mutation check I removed the "do not retry broken JSON" rule: every container test
   still passed, because the event still ends up in the dead-letter topic, just a second later. `KafkaConfigTest` now
   checks the retry rules directly. A second mutation (removing the duplicate check) was caught by
-  `aRedeliveredEventIsAppliedOnlyOnce`.
+  `tc306_aRedeliveredEventIsAppliedOnlyOnce`.
 - **GraphQL null propagation.** `placeOrder` returns `Order!`; when it fails, the whole `data` becomes null, not just
   the field. The test asserts exactly that.
 

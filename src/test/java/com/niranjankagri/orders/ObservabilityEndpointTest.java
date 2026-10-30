@@ -21,7 +21,7 @@ class ObservabilityEndpointTest {
 
     /** Health is available to check whether the application has started. */
     @Test
-    void healthEndpointReportsApplicationStatus() throws IOException, InterruptedException {
+    void tc501_healthEndpointReportsApplicationStatus() throws IOException, InterruptedException {
         HttpResponse<String> response = get("/actuator/health");
 
         assertThat(response.statusCode()).isEqualTo(200);
@@ -30,7 +30,7 @@ class ObservabilityEndpointTest {
 
     /** Prometheus receives metrics in its text exposition format. */
     @Test
-    void prometheusEndpointExportsJvmMetrics() throws IOException, InterruptedException {
+    void tc502_prometheusEndpointExportsJvmMetrics() throws IOException, InterruptedException {
         HttpResponse<String> response = get("/actuator/prometheus");
 
         assertThat(response.statusCode()).isEqualTo(200);
@@ -47,7 +47,7 @@ class ObservabilityEndpointTest {
 
     /** Operational endpoints with application details are not exposed over HTTP. */
     @Test
-    void environmentEndpointIsNotExposed() throws IOException, InterruptedException {
+    void tc503_environmentEndpointIsNotExposed() throws IOException, InterruptedException {
         assertThat(get("/actuator/env").statusCode()).isEqualTo(404);
     }
 

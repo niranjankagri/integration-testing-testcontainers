@@ -32,7 +32,7 @@ class DatabaseMigrationTest {
 
     /** Flyway applied exactly the expected migrations, all successfully. */
     @Test
-    void allMigrationsAreAppliedSuccessfully() {
+    void tc401_allMigrationsAreAppliedSuccessfully() {
         List<String> applied = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank")
                 .query(String.class)
                 .list();
@@ -41,7 +41,7 @@ class DatabaseMigrationTest {
 
     /** The database itself refuses a quantity of 0 or 11 (check constraint). */
     @Test
-    void databaseRejectsAQuantityOutsideOneToTen() {
+    void tc402_databaseRejectsAQuantityOutsideOneToTen() {
         // The API validates this too; the constraint protects the data from every other writer (scripts, other code).
         assertThatThrownBy(() -> insertOrder(0, "PLACED")).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertOrder(11, "PLACED")).isInstanceOf(DataIntegrityViolationException.class);
@@ -49,13 +49,13 @@ class DatabaseMigrationTest {
 
     /** The database refuses a status that is not one of the known ones. */
     @Test
-    void databaseRejectsAnUnknownStatus() {
+    void tc403_databaseRejectsAnUnknownStatus() {
         assertThatThrownBy(() -> insertOrder(1, "SHIPPED")).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     /** A second insert of the same event id changes nothing: the base of the duplicate-event protection. */
     @Test
-    void processedEventIdsAreUnique() {
+    void tc404_processedEventIdsAreUnique() {
         String id = "6f1c2c1e-0000-4000-8000-000000000001";
         jdbc.sql("INSERT INTO processed_events (event_id) VALUES (?::uuid) ON CONFLICT DO NOTHING").param(id).update();
         int second = jdbc.sql("INSERT INTO processed_events (event_id) VALUES (?::uuid) ON CONFLICT DO NOTHING")
@@ -66,7 +66,7 @@ class DatabaseMigrationTest {
 
     /** Competing claims stay disjoint, preserve per-order order, and reject a stale lease owner. */
     @Test
-    void outboxClaimsAreExclusiveRecoverableAndOrderedPerAggregate() {
+    void tc405_outboxClaimsAreExclusiveRecoverableAndOrderedPerAggregate() {
         UUID firstId = UUID.fromString("00000000-0000-4000-8000-000000000101");
         UUID secondId = UUID.fromString("00000000-0000-4000-8000-000000000102");
         UUID otherAggregateId = UUID.fromString("00000000-0000-4000-8000-000000000103");
@@ -111,7 +111,7 @@ class DatabaseMigrationTest {
 
     /** Retention removes only old published rows and leaves old pending events available for delivery. */
     @Test
-    void outboxRetentionDeletesOnlyPublishedRowsPastTheConfiguredAge() {
+    void tc406_outboxRetentionDeletesOnlyPublishedRowsPastTheConfiguredAge() {
         UUID expiredPublished = UUID.fromString("00000000-0000-4000-8000-000000000104");
         UUID recentPublished = UUID.fromString("00000000-0000-4000-8000-000000000105");
         UUID oldPending = UUID.fromString("00000000-0000-4000-8000-000000000106");

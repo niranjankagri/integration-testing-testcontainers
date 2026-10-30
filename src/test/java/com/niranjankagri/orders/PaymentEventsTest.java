@@ -57,7 +57,7 @@ class PaymentEventsTest {
 
     /** A successful payment marks the order PAID. */
     @Test
-    void successfulPaymentMarksTheOrderPaid() {
+    void tc304_successfulPaymentMarksTheOrderPaid() {
         double before = paymentEventCount("paid");
         Order order = newOrder();
         sendPayment(new PaymentCompleted(UUID.randomUUID(), order.id(), Result.SUCCEEDED));
@@ -67,7 +67,7 @@ class PaymentEventsTest {
 
     /** A failed payment cancels the order. */
     @Test
-    void failedPaymentCancelsTheOrder() {
+    void tc305_failedPaymentCancelsTheOrder() {
         Order order = newOrder();
         sendPayment(new PaymentCompleted(UUID.randomUUID(), order.id(), Result.FAILED));
         awaitStatus(order, OrderStatus.CANCELLED);
@@ -75,7 +75,7 @@ class PaymentEventsTest {
 
     /** The same event id delivered twice is applied once, even when the copy points at another order. */
     @Test
-    void aRedeliveredEventIsAppliedOnlyOnce() {
+    void tc306_aRedeliveredEventIsAppliedOnlyOnce() {
         // Kafka delivers at least once. The same event id must not be applied twice, even if the copy differs:
         // here it points at another order, and that order must stay untouched.
         Order first = newOrder();
@@ -103,7 +103,7 @@ class PaymentEventsTest {
      * Broken JSON goes to the dead-letter topic at once, and the next event for the same order is still processed.
      */
     @Test
-    void brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents() {
+    void tc307_brokenJsonGoesToTheDeadLetterTopicAndDoesNotBlockLaterEvents() {
         Order order = newOrder();
         try (KafkaProbe dlt = new KafkaProbe(kafkaContainer.getBootstrapServers(), Topics.PAYMENTS_COMPLETED_DLT)) {
             String broken = "{\"eventId\": \"not json at all";
@@ -123,7 +123,7 @@ class PaymentEventsTest {
      * missing.
      */
     @Test
-    void anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic() {
+    void tc308_anEventWithoutRequiredFieldsGoesToTheDeadLetterTopic() {
         try (KafkaProbe dlt = new KafkaProbe(kafkaContainer.getBootstrapServers(), Topics.PAYMENTS_COMPLETED_DLT)) {
             String incomplete = "{\"eventId\": \"" + UUID.randomUUID() + "\", \"result\": \"SUCCEEDED\"}";
             kafka.send(Topics.PAYMENTS_COMPLETED, "no-order", incomplete);
@@ -135,7 +135,7 @@ class PaymentEventsTest {
 
     /** An event for an unknown order is retried, then dead-lettered, and leaves no processed-event mark behind. */
     @Test
-    void anEventForAnUnknownOrderIsRetriedThenDeadLettered() {
+    void tc309_anEventForAnUnknownOrderIsRetriedThenDeadLettered() {
         long unknown = 987_654_321L;
         UUID eventId = UUID.randomUUID();
         double failedBefore = paymentEventCount("delivery_failed");
@@ -161,7 +161,7 @@ class PaymentEventsTest {
 
     /** A dead-lettered event can be replayed after its temporarily unknown order becomes available. */
     @Test
-    void aDeadLetteredPaymentCanBeReplayedWhenItsOrderAppears() {
+    void tc310_aDeadLetteredPaymentCanBeReplayedWhenItsOrderAppears() {
         long orderId = 9_876_543_210L;
         UUID eventId = UUID.randomUUID();
         PaymentCompleted payment = new PaymentCompleted(eventId, orderId, Result.SUCCEEDED);

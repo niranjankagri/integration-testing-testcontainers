@@ -46,7 +46,7 @@ Everything else (authentication, more entities, a real payment service) would ad
   when opened (so it sees only records produced by the test), and outside any consumer group (it never takes
   messages from the service).
 - **Proving absence** needs a bound: send a later message that is processed after the one under test (same key, same
-  partition), wait for it, then assert the earlier one had no effect. Across partitions (`anInvalidOrderPublishesNothing`)
+  partition), wait for it, then assert the earlier one had no effect. Across partitions (`tc303_anInvalidOrderPublishesNothing`)
   this is a strong indication rather than a strict guarantee, and the test says so.
 
 ## 6. Event handling decisions
@@ -84,7 +84,7 @@ Two mutation checks, run by hand:
 
 | Mutation | Result |
 |---|---|
-| Remove the duplicate check in `PaymentListener` | caught by `aRedeliveredEventIsAppliedOnlyOnce` |
+| Remove the duplicate check in `PaymentListener` | caught by `tc306_aRedeliveredEventIsAppliedOnlyOnce` |
 | Retry broken JSON and invalid events (remove `addNotRetryableExceptions`) | **not caught** by the container tests (the event still reaches the dead-letter topic, a second later); `KafkaConfigTest` was added and now catches it |
 
 ## 9. CI
