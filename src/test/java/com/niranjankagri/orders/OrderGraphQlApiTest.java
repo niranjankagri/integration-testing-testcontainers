@@ -35,7 +35,7 @@ class OrderGraphQlApiTest {
 
     /** A placed order can be read back with all its fields and status PLACED. */
     @Test
-    void placeOrderStoresTheOrderAsPlaced() {
+    void tc201_placeOrderStoresTheOrderAsPlaced() {
         String id = place(customer, "SKU-COFFEE", 2);
 
         graphQl.document("query($id: ID!) { order(id: $id) { id customer sku quantity status } }")
@@ -50,7 +50,7 @@ class OrderGraphQlApiTest {
 
     /** orders(customer) returns only that customer's orders, newest first. */
     @Test
-    void ordersListsOnlyTheCustomersOwnOrdersNewestFirst() {
+    void tc202_ordersListsOnlyTheCustomersOwnOrdersNewestFirst() {
         String first = place(customer, "SKU-A", 1);
         String second = place(customer, "SKU-B", 1);
         place("someone-else-" + UUID.randomUUID(), "SKU-C", 1);
@@ -65,7 +65,7 @@ class OrderGraphQlApiTest {
 
     /** An unknown id gives order: null, not an error. */
     @Test
-    void unknownOrderIsNullWithoutAnError() {
+    void tc203_unknownOrderIsNullWithoutAnError() {
         graphQl.document("{ order(id: \"999999999\") { id } }")
                 .execute()
                 .errors().verify()
@@ -74,7 +74,7 @@ class OrderGraphQlApiTest {
 
     /** Invalid input gives one BAD_REQUEST error naming every broken field, and nothing reaches the database. */
     @Test
-    void invalidInputIsABadRequestErrorAndNothingIsStored() {
+    void tc204_invalidInputIsABadRequestErrorAndNothingIsStored() {
         graphQl.document(PLACE)
                 .variable("customer", " ")
                 .variable("sku", "SKU-A")
@@ -96,7 +96,7 @@ class OrderGraphQlApiTest {
 
     /** A missing required field is refused by the GraphQL schema itself, before any of our code runs. */
     @Test
-    void aMissingRequiredFieldIsRejectedByTheSchemaBeforeAnyCodeRuns() {
+    void tc205_aMissingRequiredFieldIsRejectedByTheSchemaBeforeAnyCodeRuns() {
         graphQl.document("mutation { placeOrder(input: {customer: \"x\", sku: \"y\"}) { id } }")
                 .execute()
                 .errors()
@@ -106,7 +106,7 @@ class OrderGraphQlApiTest {
 
     /** Asking for a field the schema does not have is an error. */
     @Test
-    void anUnknownFieldIsRejectedByTheSchema() {
+    void tc206_anUnknownFieldIsRejectedByTheSchema() {
         graphQl.document("{ order(id: \"1\") { id price } }")
                 .execute()
                 .errors()

@@ -53,7 +53,7 @@ class ConsumerLagTest {
 
     /** Pausing stands in for a stuck consumer: three payments wait, the gauge says 3, then 0 after resuming. */
     @Test
-    void lagCountsUncommittedPaymentsWhileTheListenerIsStoppedAndClearsAfterwards() throws Exception {
+    void tc312_lagCountsUncommittedPaymentsWhileTheListenerIsStoppedAndClearsAfterwards() throws Exception {
         await().atMost(TIMEOUT).until(() -> lag.paymentLag() == 0); // nothing left over from other tests
         List<Order> placed = IntStream.range(0, 3)
                 .mapToObj(i -> service.place(new PlaceOrderInput("lag-" + UUID.randomUUID(), "SKU-1", 1)))

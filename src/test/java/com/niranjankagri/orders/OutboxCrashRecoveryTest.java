@@ -49,7 +49,7 @@ class OutboxCrashRecoveryTest {
     static final KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("apache/kafka-native:4.1.1"));
 
     @Test
-    void aRestartedInstanceRepublishesAnEventWhoseRelayCrashedAfterTheKafkaAcknowledgement() {
+    void tc311_aRestartedInstanceRepublishesAnEventWhoseRelayCrashedAfterTheKafkaAcknowledgement() {
         JsonMapper json = JsonMapper.builder().build();
         KafkaProbe probe = null;
         try {

@@ -103,7 +103,7 @@ class PaymentConsumerPerformanceTest {
     /** One instance works through a backlog of payments for existing orders. */
     @Test
     @Order(1)
-    void oneInstanceProcessesABacklogAboveTheFloor() {
+    void tc504_oneInstanceProcessesABacklogAboveTheFloor() {
         List<Long> orders = insertOrders("throughput", EVENTS);
 
         long start = System.nanoTime();
@@ -122,7 +122,7 @@ class PaymentConsumerPerformanceTest {
      */
     @Test
     @Order(2)
-    void rebalancesWhileProcessingLoseNothingAndApplyNothingTwice() {
+    void tc505_rebalancesWhileProcessingLoseNothingAndApplyNothingTwice() {
         List<Long> orders = insertOrders("rebalance", EVENTS);
         long processedBefore = processedEventCount();
         Rebalances rebalances = new Rebalances();
