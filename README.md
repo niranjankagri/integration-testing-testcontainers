@@ -204,9 +204,15 @@ The thresholds are floors that catch a large regression, not benchmarks. First r
 
 Docker Desktop runs the containers in a VM, so every database round trip costs more on the laptop.
 
-One listener thread handles all three partitions and each event is its own database transaction, which sets the pace;
-`spring.kafka.listener.concurrency=3` (one thread per partition, so per-order ordering is kept) is the obvious next step.
-CI runs these tests weekly and by hand and puts the report in the job summary.
+One listener thread handles all three partitions and each event is its own database transaction, which sets the pace.
+`spring.kafka.listener.concurrency=3` (one thread per partition) was measured on 30 Oct 2026 and left out: 873 instead
+of 855 events/s on the same runner, because the database work, not the listener thread, is the limit; and with three
+threads one instance owns all three partitions, so a second instance gets none (the rebalance test failed). Capacity
+grows by adding instances, up to one per partition.
+
+CI runs these tests weekly and by hand and puts the report in the job summary (run of 30 Oct 2026 on `main`):
+
+![Payment consumer performance: one instance 855 events/s, instance joins and leaves 294 events/s at a 300/s stream, longest pause 0.3 s, each event recorded once](docs/images/performance-report.png)
 
 ## CI
 
