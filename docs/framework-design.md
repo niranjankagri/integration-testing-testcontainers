@@ -18,7 +18,7 @@ Why the project is built the way it is. The README says what it does and how to 
 | `events/` | `OrderPlaced` out through a transactional outbox, `PaymentCompleted` in with deduplication and a dead-letter topic | Spring Kafka, Jackson 3 |
 | `db/migration` | the orders, processed-event and outbox schemas, including check constraints | Flyway, PostgreSQL 18 |
 | `TestcontainersConfiguration` | PostgreSQL and Kafka in Docker, wired with `@ServiceConnection` | Testcontainers 2 |
-| tests | API, events, migrations, retry rules | JUnit 5, `HttpGraphQlTester`, AssertJ, Awaitility |
+| tests | API, events, migrations, retry rules, network fault injection | JUnit 5, `HttpGraphQlTester`, AssertJ, Awaitility, Toxiproxy |
 
 ## 3. The service is small on purpose
 
@@ -38,7 +38,14 @@ Everything else (authentication, more entities, a real payment service) would ad
   tests never see each other's data, in any order, and could run in parallel. No truncate between tests.
 - **`TestOrderServiceApplication`** runs the service with the same containers for manual exploration (GraphiQL).
 
-## 5. Asynchronous assertions
+## 5. Network fault injection
+
+`DatabaseResilienceTest` adds a Toxiproxy container for one isolated test. It routes a JDBC client to the real
+PostgreSQL container, adds 300 ms of response latency, cuts the proxied path to trigger the driver's two-second socket
+timeout, restores the route, and verifies a fresh query succeeds. The test exercises network failure and recovery
+without changing the application connection or interrupting other integration tests.
+
+## 6. Asynchronous assertions
 
 - **Awaitility** polls until a condition holds and fails after a timeout (15 to 20 seconds, generous because it is
   only reached on failure). A passing check returns as soon as the state appears.
@@ -49,7 +56,7 @@ Everything else (authentication, more entities, a real payment service) would ad
   partition), wait for it, then assert the earlier one had no effect. Across partitions (`tc303_anInvalidOrderPublishesNothing`)
   this is a strong indication rather than a strict guarantee, and the test says so.
 
-## 6. Event handling decisions
+## 7. Event handling decisions
 
 - **Transactional outbox:** `OrderPlaced` is inserted in the same PostgreSQL transaction as its order. The relay
   publishes only committed rows and marks them after Kafka acknowledges. A crash after broker acknowledgement but
@@ -68,7 +75,7 @@ Everything else (authentication, more entities, a real payment service) would ad
   (`.DLT` before 4.0, `-dlt` since), which the tests caught.
 - **State rules:** a payment result only applies to a `PLACED` order; anything else is logged and ignored.
 
-## 7. GraphQL testing
+## 8. GraphQL testing
 
 - `HttpGraphQlTester` sends real HTTP requests to the running app (random port), so routing, JSON and error mapping
   are part of the test.
@@ -78,7 +85,7 @@ Everything else (authentication, more entities, a real payment service) would ad
   runs and protect every resolver.
 - A failing non-null field nulls its parent (`data: null`); the test asserts this GraphQL rule explicitly.
 
-## 8. Proving the tests
+## 9. Proving the tests
 
 Two mutation checks, run by hand:
 
@@ -87,12 +94,12 @@ Two mutation checks, run by hand:
 | Remove the duplicate check in `PaymentListener` | caught by `tc306_aRedeliveredEventIsAppliedOnlyOnce` |
 | Retry broken JSON and invalid events (remove `addNotRetryableExceptions`) | **not caught** by the container tests (the event still reaches the dead-letter topic, a second later); `KafkaConfigTest` was added and now catches it |
 
-## 9. CI
+## 10. CI
 
 GitHub's Ubuntu runner has Docker, so `mvnw verify` runs unchanged. A small shell step turns the Surefire XML into a
 table in the job summary; the reports are uploaded when a test fails.
 
-## 10. What a real setup adds
+## 11. What a real setup adds
 
 - Contract tests or a schema registry between event producers and consumers.
 - Published rows are removed in bounded batches after 30 days by default; set `ORDERS_OUTBOX_RETENTION_DAYS` to match
