@@ -12,6 +12,7 @@ so a failure in the report leads straight to the case below, and one case runs w
 | TC-301 to TC-312 | Events: OrderPlaced (outbox), payment events, crash recovery, consumer lag | `OrderPlacedEventTest`, `PaymentEventsTest`, `OutboxCrashRecoveryTest`, `ConsumerLagTest` |
 | TC-401 to TC-406 | Database: migrations, constraints, outbox store | `DatabaseMigrationTest` |
 | TC-501 to TC-505 | Operations: health, metrics, consumer performance | `ObservabilityEndpointTest`, `PaymentConsumerPerformanceTest` (tag `performance`) |
+| TC-601 | Database network resilience: latency, connection loss and recovery | `DatabaseResilienceTest` |
 
 Not listed: `KafkaConfigTest`, a unit test of which failures are retried.
 
@@ -265,3 +266,17 @@ Run: `mvnw verify -Pperformance`.
 | # | Step | Expected result |
 |---|---|---|
 | 1 | Send 6,000 payments at 300 per second; start a second instance during the stream and stop it after two thirds | Every order PAID exactly once (6,000 processed events, no duplicates); no pause in progress longer than 30 s |
+
+
+## Database network resilience (`DatabaseResilienceTest`)
+
+### TC-601 Database calls recover after latency and a network cut
+
+Run: `mvnw test -Dtest=DatabaseResilienceTest#tc601*` (requires Docker; starts PostgreSQL and Toxiproxy).
+
+| # | Step | Expected result |
+|---|---|---|
+| 1 | Query PostgreSQL through the proxy | `SELECT 1` returns `1` |
+| 2 | Add 300 ms downstream latency and query again | Query still succeeds and takes at least 250 ms |
+| 3 | Disable the proxy and query over the existing connection | JDBC raises `SQLException` within the configured socket timeout |
+| 4 | Re-enable the proxy and open a fresh connection | `SELECT 1` succeeds again |
