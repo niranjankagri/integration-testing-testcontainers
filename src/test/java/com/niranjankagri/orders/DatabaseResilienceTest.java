@@ -33,7 +33,7 @@ class DatabaseResilienceTest {
     private static final int SOCKET_TIMEOUT_SECONDS = 2;
 
     @Autowired
-    PostgreSQLContainer<?> postgres;
+    PostgreSQLContainer postgres;
 
     private ToxiproxyContainer toxiproxy;
     private Proxy postgresProxy;
