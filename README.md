@@ -26,9 +26,9 @@ somewhere else that breaks these tests; one clone and `mvnw verify` run everythi
 | `ObservabilityEndpointTest` (3) | health and Prometheus endpoints work; configuration details are not exposed | real HTTP requests to the random application port |
 | `ConsumerLagTest` (1) | the consumer-lag gauge counts uncommitted payment events while the listener is stopped, and returns to zero after the backlog is processed | the listener container paused and resumed; three payments sent while paused |
 | `OutboxCrashRecoveryTest` (1) | a relay that dies after Kafka acknowledged an event, before the database mark: a restarted instance sends the event again with the same id once the claim lease expires, and marks it published | two service instances one after the other on their own PostgreSQL and Kafka; the crash is an `Error` thrown from `markPublished` |
+| `DatabaseResilienceTest` (1) | database calls see injected latency, fail during a network cut, and recover after the proxy is restored | PostgreSQL through Testcontainers Toxiproxy |
 
-**30 tests** cover database migrations, the GraphQL API, Kafka event processing, crash recovery of the outbox, and the
-operational endpoints.
+**31 tests** cover database migrations, the GraphQL API, Kafka event processing, crash recovery of the outbox, database network resilience, and the operational endpoints.
 
 The service also exposes **health and Prometheus metrics** through Spring Boot Actuator, with only the health and
 scrape endpoints available over HTTP.
@@ -85,6 +85,13 @@ trace export too, because no collector runs in CI.
   topics. Those are where event-driven services break.
 - **A shared test environment is the classic source of flaky tests:** data left by other runs, outages, version drift.
   A container per run starts empty, at a pinned version.
+
+## Injecting database network failures
+
+`DatabaseResilienceTest` sends SQL through a Toxiproxy TCP proxy to the same PostgreSQL container used by the
+integration suite. It first proves a healthy query, adds 300 ms of downstream latency, disables the proxy and expects a
+bounded JDBC timeout, then restores the path and proves a fresh query succeeds. The proxy is isolated to this test; the
+application's normal database connection and other tests are unaffected.
 
 ## Testing asynchronous behaviour without sleeps
 
@@ -156,7 +163,7 @@ Needs Java 21 or later and Docker Desktop.
 
 ```
 cd /d D:\Data\Work\portfolio-projects\integration-testing-testcontainers
-mvnw.cmd verify                       all 30 tests (pulls postgres:18-alpine and apache/kafka-native:4.1.1 once)
+mvnw.cmd verify                       all 31 tests (pulls postgres:18-alpine, apache/kafka-native:4.1.1 and Toxiproxy)
 mvnw.cmd test -Dtest=PaymentEventsTest
 mvnw.cmd verify -Pperformance         only the consumer throughput and rebalancing tests (a few minutes)
 mvnw.cmd spring-boot:test-run         the service with the same containers; GraphiQL at http://localhost:8080/graphiql
